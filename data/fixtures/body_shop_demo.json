@@ -1,0 +1,14 @@
+{
+  "layer": "home",
+  "fictional": true,
+  "note": "Fictional small shop for demos and tests.",
+  "profile": {
+    "role": "small_shop",
+    "name": "Quick Fix Collision (fictional)",
+    "state": "CA",
+    "topics": ["spray_coating", "paint_solvent", "outdoor_burning"],
+    "burning": {"what": ["pallets"]},
+    "coatings": {"spray_applies": true, "substrates": ["motor_vehicles"], "vehicles_per_year": 400, "for_compensation": true,
+                 "paint_stripping_methylene_chloride": false}
+  }
+}

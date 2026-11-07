@@ -1,0 +1,16 @@
+{
+  "layer": "home",
+  "fictional": true,
+  "note": "Fictional household for demos and tests.",
+  "profile": {
+    "role": "homeowner",
+    "state": "PA",
+    "topics": ["outdoor_burning", "idling", "wood_heating", "paint_solvent", "spray_coating"],
+    "burning": {"what": ["yard_waste", "leaves"]},
+    "vehicles": {"diesel_pickup": true},
+    "wood_heater": {"kind": "wood_stove", "buying_new": true},
+    "painting": {"interior": true},
+    "coatings": {"spray_applies": true, "substrates": ["motor_vehicles"], "vehicles_per_year": 1, "for_compensation": false,
+                 "paint_stripping_methylene_chloride": false}
+  }
+}

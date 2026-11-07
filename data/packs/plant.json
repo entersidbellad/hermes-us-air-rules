@@ -1,0 +1,1336 @@
+{
+  "name": "plant",
+  "version": "0.1.0",
+  "layer": "plant",
+  "description": "Seed pack for US federal air rules at cement and lime plants and the combustion units found at most industrial sites. Applicability screening only: no emission limits, no calculations.",
+  "verdicts": [
+    "applies",
+    "check_with_ehs",
+    "skip"
+  ],
+  "fallback_verdict": "check_with_ehs",
+  "skip_verdict": "skip",
+  "never_skip_without_evidence": true,
+  "entries": [
+    {
+      "id": "60-F",
+      "title": "NSPS for Portland Cement Plants",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart F",
+      "ecfr": {
+        "part": "60",
+        "subpart": "F",
+        "applicability": "60.60"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"portland cement\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "kiln",
+        "clinker_cooler",
+        "raw_mill",
+        "finish_mill",
+        "raw_material_dryer",
+        "storage",
+        "conveyor_transfer",
+        "bagging_loading"
+      ],
+      "relevant_if": {
+        "field": "facility.is_cement_plant",
+        "op": "is_true"
+      },
+      "relevance_unknown_why": "Could not tell whether this is a portland cement plant (give naics or kiln product).",
+      "rules": [
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.type",
+                "op": "eq",
+                "value": "kiln"
+              },
+              {
+                "field": "unit.product",
+                "op": "eq",
+                "value": "lime"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Lime kilns are covered by subpart HH, not subpart F."
+        },
+        {
+          "when": {
+            "field": "unit.nsps_date",
+            "op": "after",
+            "value": "1971-08-17"
+          },
+          "verdict": "applies",
+          "why": "Affected facility at a portland cement plant that commenced construction or modification after August 17, 1971 (§ 60.60(b))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.construction_date",
+                "op": "on_or_before",
+                "value": "1971-08-17"
+              },
+              {
+                "field": "unit.modified_or_reconstructed",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Built on or before August 17, 1971 and not modified or reconstructed since (§ 60.60(b))."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Construction or modification history does not settle the August 17, 1971 date test."
+      },
+      "unknown_why": "Subpart F turns on when construction or modification commenced; the profile does not say.",
+      "verified": true,
+      "verify_phrases": [
+        "portland cement plants",
+        "August 17, 1971"
+      ]
+    },
+    {
+      "id": "63-LLL",
+      "title": "NESHAP for the Portland Cement Manufacturing Industry",
+      "program": "NESHAP",
+      "citation": "40 CFR part 63 subpart LLL",
+      "ecfr": {
+        "part": "63",
+        "subpart": "LLL",
+        "applicability": "63.1340"
+      },
+      "fr": {
+        "part": "63",
+        "term": "\"portland cement manufacturing\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "kiln",
+        "clinker_cooler",
+        "raw_mill",
+        "finish_mill",
+        "raw_material_dryer",
+        "storage",
+        "conveyor_transfer",
+        "bagging_loading",
+        "open_clinker_pile",
+        "crusher"
+      ],
+      "relevant_if": {
+        "field": "facility.is_cement_plant",
+        "op": "is_true"
+      },
+      "relevance_unknown_why": "Could not tell whether this is a portland cement plant (give naics or kiln product).",
+      "rules": [
+        {
+          "when": {
+            "field": "unit.type",
+            "op": "eq",
+            "value": "crusher"
+          },
+          "verdict": "skip",
+          "why": "Crushers are not covered by subpart LLL regardless of their location (§ 63.1340(c))."
+        },
+        {
+          "when": {
+            "field": "unit.subject_to_ooo",
+            "op": "flagged"
+          },
+          "verdict": "skip",
+          "why": "Onsite sources subject to NSPS subpart OOO are not subject to subpart LLL (§ 63.1340(c))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.type",
+                "op": "eq",
+                "value": "kiln"
+              },
+              {
+                "field": "unit.burns_hazardous_waste",
+                "op": "is_true"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Kilns that burn hazardous waste and are regulated under subpart EEE are excluded (§ 63.1340(b)(1)); see 63-EEE."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.type",
+                "op": "in",
+                "value": [
+                  "storage",
+                  "conveyor_transfer",
+                  "bagging_loading"
+                ]
+              },
+              {
+                "field": "facility.major_hap",
+                "op": "is_true"
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Storage bins, conveying transfer points and bagging/bulk loading are covered at major-source plants (§ 63.1340(b)(6)-(8))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.type",
+                "op": "in",
+                "value": [
+                  "storage",
+                  "conveyor_transfer",
+                  "bagging_loading"
+                ]
+              },
+              {
+                "field": "facility.major_hap",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Storage bins, transfer points and bagging/loading are covered only at major-source plants (§ 63.1340(b)(6)-(8))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.type",
+                "op": "eq",
+                "value": "kiln"
+              },
+              {
+                "field": "unit.burns_hazardous_waste",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Each kiln (with alkali bypass and inline coal mill) at a major or area source portland cement plant (§ 63.1340(a), (b)(1))."
+        },
+        {
+          "when": {
+            "field": "unit.type",
+            "op": "in",
+            "value": [
+              "clinker_cooler",
+              "raw_mill",
+              "finish_mill",
+              "raw_material_dryer",
+              "open_clinker_pile"
+            ]
+          },
+          "verdict": "applies",
+          "why": "Covered at any portland cement plant, major or area source (§ 63.1340(a), (b)(2)-(5), (b)(9))."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Unit type not settled by § 63.1340(b)."
+      },
+      "unknown_why": "Subpart LLL coverage for this unit depends on major/area status or hazardous-waste burning, which the profile does not give.",
+      "notes": "A plant subject to subpart LLL is also subject to title V permitting (§ 63.1340(d)).",
+      "verified": true,
+      "verify_phrases": [
+        "major source or an area source",
+        "Crushers are not covered by this subpart regardless of their location",
+        "title V permitting"
+      ]
+    },
+    {
+      "id": "63-EEE",
+      "title": "NESHAP for Hazardous Waste Combustors (hazardous waste cement kilns)",
+      "program": "NESHAP",
+      "citation": "40 CFR part 63 subpart EEE",
+      "ecfr": {
+        "part": "63",
+        "subpart": "EEE",
+        "applicability": "63.1200"
+      },
+      "fr": {
+        "part": "63",
+        "term": "\"hazardous waste combustors\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "kiln"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.burns_hazardous_waste",
+            "op": "is_true"
+          },
+          "verdict": "applies",
+          "why": "Hazardous waste cement kilns are hazardous waste combustors; major and area sources are both covered (§ 63.1200, (a)(1)). RCRA permitting also applies."
+        },
+        {
+          "when": {
+            "field": "unit.burns_hazardous_waste",
+            "op": "is_false"
+          },
+          "verdict": "skip",
+          "why": "The kiln does not burn hazardous waste."
+        }
+      ],
+      "unknown_why": "Whether the kiln burns hazardous waste decides between subpart LLL and subpart EEE.",
+      "verified": true,
+      "verify_phrases": [
+        "hazardous waste cement kilns",
+        "Both area sources and major sources are subject to this subpart"
+      ]
+    },
+    {
+      "id": "60-CCCC",
+      "title": "CISWI: waste-burning kilns (check only)",
+      "program": "NSPS / Emission Guidelines (CAA section 129)",
+      "citation": "40 CFR part 60 subparts CCCC and DDDD",
+      "ecfr": {
+        "part": "60",
+        "subpart": "CCCC",
+        "applicability": "60.2015"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"commercial and industrial solid waste incineration\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "kiln"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.burns_solid_waste",
+            "op": "is_true"
+          },
+          "verdict": "check_with_ehs",
+          "why": "A kiln that combusts solid waste (as defined in 40 CFR part 241) is a waste-burning kiln under CISWI (subpart CCCC for new units, DDDD/state plans for existing). This pack only flags it: the solid-waste determination needs EHS review."
+        },
+        {
+          "when": {
+            "field": "unit.burns_solid_waste",
+            "op": "is_false"
+          },
+          "verdict": "skip",
+          "why": "The kiln does not combust solid waste (non-hazardous secondary materials that are not solid waste do not trigger CISWI)."
+        }
+      ],
+      "unknown_why": "Whether any alternative fuel is a solid waste under 40 CFR part 241 decides CISWI; the profile does not say.",
+      "verified": true,
+      "verify_phrases": [
+        "new incineration unit",
+        "June 4, 2010"
+      ]
+    },
+    {
+      "id": "60-OOO",
+      "title": "NSPS for Nonmetallic Mineral Processing Plants",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart OOO",
+      "ecfr": {
+        "part": "60",
+        "subpart": "OOO",
+        "applicability": "60.670"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"nonmetallic mineral processing\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "crusher",
+        "screen"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.follows_subpart_f",
+            "op": "is_true"
+          },
+          "verdict": "skip",
+          "why": "A facility subject to subpart F, or that follows one in the plant process, is not subject to subpart OOO (§ 60.670(b))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.follows_subpart_f",
+                "op": "is_false"
+              },
+              {
+                "field": "unit.nsps_date",
+                "op": "after",
+                "value": "1983-08-31"
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Crusher or screening operation ahead of any subpart F facility, constructed, modified or reconstructed after August 31, 1983 (§ 60.670(a), (e))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.construction_date",
+                "op": "on_or_before",
+                "value": "1983-08-31"
+              },
+              {
+                "field": "unit.modified_or_reconstructed",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Built on or before August 31, 1983 and not modified or reconstructed since (§ 60.670(e))."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Dates do not settle the August 31, 1983 test."
+      },
+      "unknown_why": "Subpart OOO depends on where the unit sits relative to subpart F facilities (follows_subpart_f) and when it was built.",
+      "verified": true,
+      "verify_phrases": [
+        "nonmetallic mineral processing plants",
+        "subparts F or I of this part",
+        "August 31, 1983"
+      ]
+    },
+    {
+      "id": "60-Y",
+      "title": "NSPS for Coal Preparation and Processing Plants",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart Y",
+      "ecfr": {
+        "part": "60",
+        "subpart": "Y",
+        "applicability": "60.250"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"coal preparation\""
+      },
+      "scope": "facility",
+      "relevant_if": {
+        "field": "facility.handles_coal",
+        "op": "is_true"
+      },
+      "rules": [
+        {
+          "when": {
+            "field": "facility.coal_processed_tpd",
+            "op": "gt",
+            "value": 200
+          },
+          "verdict": "check_with_ehs",
+          "why": "The site processes more than 200 tons of coal per day (§ 60.250(a)). Which units are affected, and which standards apply, depends on each unit's construction date (§ 60.250(b)-(d))."
+        },
+        {
+          "when": {
+            "field": "facility.coal_processed_tpd",
+            "op": "lte",
+            "value": 200
+          },
+          "verdict": "skip",
+          "why": "Processes 200 tons of coal per day or less (§ 60.250(a))."
+        }
+      ],
+      "unknown_why": "The profile does not give coal_processed_tpd (tons of coal processed per day).",
+      "verified": true,
+      "verify_phrases": [
+        "200 tons",
+        "coal preparation and processing plants"
+      ]
+    },
+    {
+      "id": "63-ZZZZ",
+      "title": "NESHAP for Stationary Reciprocating Internal Combustion Engines (RICE)",
+      "program": "NESHAP",
+      "citation": "40 CFR part 63 subpart ZZZZ",
+      "ecfr": {
+        "part": "63",
+        "subpart": "ZZZZ",
+        "applicability": "63.6585"
+      },
+      "fr": {
+        "part": "63",
+        "term": "\"reciprocating internal combustion engines\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "stationary_rice"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.test_cell",
+            "op": "flagged"
+          },
+          "verdict": "skip",
+          "why": "Engines being tested at a stationary RICE test cell/stand are excluded (§ 63.6585)."
+        },
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "applies",
+          "why": "Any stationary RICE at a major or area source of HAP (§ 63.6585). Many new or reconstructed engines comply by meeting NSPS IIII or JJJJ (§ 63.6590(c))."
+        }
+      ],
+      "verified": true,
+      "verify_phrases": [
+        "major or area source of HAP emissions",
+        "test cell/stand"
+      ]
+    },
+    {
+      "id": "60-IIII",
+      "title": "NSPS for Stationary Compression Ignition Engines",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart IIII",
+      "ecfr": {
+        "part": "60",
+        "subpart": "IIII",
+        "applicability": "60.4200"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"compression ignition\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "stationary_rice"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.ignition",
+            "op": "eq",
+            "value": "SI"
+          },
+          "verdict": "skip",
+          "why": "Spark ignition engine; see subpart JJJJ."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.manufacture_date",
+                "op": "on_or_before",
+                "value": "2006-04-01"
+              },
+              {
+                "field": "unit.modified_or_reconstructed",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Manufactured on or before April 1, 2006 and not modified or reconstructed (§ 60.4200(a)(2)-(3))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.use",
+                "op": "ne",
+                "value": "fire_pump"
+              },
+              {
+                "field": "unit.order_date",
+                "op": "after",
+                "value": "2005-07-11"
+              },
+              {
+                "field": "unit.manufacture_date",
+                "op": "after",
+                "value": "2006-04-01"
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Non-fire-pump CI engine ordered after July 11, 2005 and manufactured after April 1, 2006 (§ 60.4200(a)(2)(i))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.use",
+                "op": "eq",
+                "value": "fire_pump"
+              },
+              {
+                "field": "unit.order_date",
+                "op": "after",
+                "value": "2005-07-11"
+              },
+              {
+                "field": "unit.manufacture_date",
+                "op": "after",
+                "value": "2006-07-01"
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Fire pump engine ordered after July 11, 2005 and manufactured after July 1, 2006 (§ 60.4200(a)(2)(ii))."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Order and manufacture dates straddle the subpart IIII thresholds."
+      },
+      "unknown_why": "Subpart IIII turns on ignition type, order date (construction commences when the engine is ordered) and manufacture date.",
+      "verified": true,
+      "verify_phrases": [
+        "July 11, 2005",
+        "April 1, 2006",
+        "commence construction"
+      ]
+    },
+    {
+      "id": "60-JJJJ",
+      "title": "NSPS for Stationary Spark Ignition Engines",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart JJJJ",
+      "ecfr": {
+        "part": "60",
+        "subpart": "JJJJ",
+        "applicability": "60.4230"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"spark ignition\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "stationary_rice"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.ignition",
+            "op": "eq",
+            "value": "CI"
+          },
+          "verdict": "skip",
+          "why": "Compression ignition engine; see subpart IIII."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.manufacture_date",
+                "op": "before",
+                "value": "2007-07-01"
+              },
+              {
+                "field": "unit.modified_or_reconstructed",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Manufactured before July 1, 2007 (the earliest owner/operator date) and not modified or reconstructed (§ 60.4230(a)(4)-(5))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.order_date",
+                "op": "after",
+                "value": "2006-06-12"
+              },
+              {
+                "field": "unit.manufacture_date",
+                "op": "on_or_after",
+                "value": "2009-01-01"
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "SI engine ordered after June 12, 2006 and manufactured on or after January 1, 2009: past every manufacture-date threshold in § 60.4230(a)(4)."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Manufactured between July 2007 and January 2009: the threshold depends on horsepower, lean/rich burn and emergency use (§ 60.4230(a)(4))."
+      },
+      "unknown_why": "Subpart JJJJ turns on ignition type, order date and manufacture date.",
+      "verified": true,
+      "verify_phrases": [
+        "June 12, 2006",
+        "July 1, 2007",
+        "January 1, 2009"
+      ]
+    },
+    {
+      "id": "63-DDDDD",
+      "title": "NESHAP for Major Source Industrial, Commercial and Institutional Boilers and Process Heaters",
+      "program": "NESHAP",
+      "citation": "40 CFR part 63 subpart DDDDD",
+      "ecfr": {
+        "part": "63",
+        "subpart": "DDDDD",
+        "applicability": "63.7485"
+      },
+      "fr": {
+        "part": "63",
+        "term": "\"boilers and process heaters\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "boiler",
+        "process_heater"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "facility.major_hap",
+            "op": "is_true"
+          },
+          "verdict": "applies",
+          "why": "Boiler or process heater at a major source of HAP (§ 63.7485); check the exemptions in § 63.7491."
+        },
+        {
+          "when": {
+            "field": "facility.major_hap",
+            "op": "is_false"
+          },
+          "verdict": "skip",
+          "why": "Area source of HAP; boilers there fall under subpart JJJJJJ instead."
+        }
+      ],
+      "unknown_why": "Major vs area HAP status (10 tpy single / 25 tpy combined HAP potential to emit) is not given.",
+      "verified": true,
+      "verify_phrases": [
+        "major source of HAP",
+        "63.7491"
+      ]
+    },
+    {
+      "id": "63-JJJJJJ",
+      "title": "NESHAP for Area Source Industrial, Commercial and Institutional Boilers",
+      "program": "NESHAP (area source)",
+      "citation": "40 CFR part 63 subpart JJJJJJ",
+      "ecfr": {
+        "part": "63",
+        "subpart": "JJJJJJ",
+        "applicability": "63.11193"
+      },
+      "fr": {
+        "part": "63",
+        "term": "\"area sources\" boilers"
+      },
+      "scope": "unit",
+      "unit_types": [
+        "boiler"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.fuel_class",
+            "op": "eq",
+            "value": "gas"
+          },
+          "verdict": "skip",
+          "why": "Gas-fired boilers are not subject (§ 63.11195(e))."
+        },
+        {
+          "when": {
+            "field": "facility.major_hap",
+            "op": "is_true"
+          },
+          "verdict": "skip",
+          "why": "Major source of HAP; see subpart DDDDD."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "facility.major_hap",
+                "op": "is_false"
+              },
+              {
+                "field": "unit.fuel_class",
+                "op": "in",
+                "value": [
+                  "solid",
+                  "liquid"
+                ]
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Coal, biomass or oil-fired boiler at an area source of HAP (§ 63.11193); check the other exclusions in § 63.11195."
+        }
+      ],
+      "unknown_why": "Subpart JJJJJJ turns on area-source status and the boiler's fuel.",
+      "verified": true,
+      "verify_phrases": [
+        "area source of hazardous air pollutants",
+        "gas-fired boiler"
+      ],
+      "verify_sections": [
+        "63.11195"
+      ]
+    },
+    {
+      "id": "60-Db",
+      "title": "NSPS for Industrial-Commercial-Institutional Steam Generating Units (>100 MMBtu/hr)",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart Db",
+      "ecfr": {
+        "part": "60",
+        "subpart": "Db",
+        "applicability": "60.40b"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"steam generating units\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "boiler"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.mmbtu_hr",
+            "op": "lte",
+            "value": 100
+          },
+          "verdict": "skip",
+          "why": "Heat input capacity of 100 MMBtu/hr or less; see subpart Dc."
+        },
+        {
+          "when": {
+            "field": "unit.nsps_date",
+            "op": "after",
+            "value": "1984-06-19"
+          },
+          "verdict": "applies",
+          "why": "Over 100 MMBtu/hr and constructed, modified or reconstructed after June 19, 1984 (§ 60.40b(a))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.construction_date",
+                "op": "on_or_before",
+                "value": "1984-06-19"
+              },
+              {
+                "field": "unit.modified_or_reconstructed",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Built on or before June 19, 1984 and not modified or reconstructed (§ 60.40b(a))."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Dates do not settle the June 19, 1984 test."
+      },
+      "unknown_why": "Subpart Db needs heat input capacity (mmbtu_hr) and construction/modification dates.",
+      "verified": true,
+      "verify_phrases": [
+        "June 19, 1984",
+        "100 million British thermal units per hour"
+      ]
+    },
+    {
+      "id": "60-Dc",
+      "title": "NSPS for Small Industrial-Commercial-Institutional Steam Generating Units (10-100 MMBtu/hr)",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart Dc",
+      "ecfr": {
+        "part": "60",
+        "subpart": "Dc",
+        "applicability": "60.40c"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"small industrial-commercial-institutional steam generating units\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "boiler"
+      ],
+      "rules": [
+        {
+          "when": {
+            "any": [
+              {
+                "field": "unit.mmbtu_hr",
+                "op": "lt",
+                "value": 10
+              },
+              {
+                "field": "unit.mmbtu_hr",
+                "op": "gt",
+                "value": 100
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Outside the 10 to 100 MMBtu/hr range of subpart Dc (§ 60.40c(a))."
+        },
+        {
+          "when": {
+            "field": "unit.nsps_date",
+            "op": "after",
+            "value": "1989-06-09"
+          },
+          "verdict": "applies",
+          "why": "10 to 100 MMBtu/hr and constructed, modified or reconstructed after June 9, 1989 (§ 60.40c(a)). Gas-only units mainly keep fuel records (§ 60.48c)."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.construction_date",
+                "op": "on_or_before",
+                "value": "1989-06-09"
+              },
+              {
+                "field": "unit.modified_or_reconstructed",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Built on or before June 9, 1989 and not modified or reconstructed (§ 60.40c(a))."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Dates do not settle the June 9, 1989 test."
+      },
+      "unknown_why": "Subpart Dc needs heat input capacity (mmbtu_hr) and construction/modification dates.",
+      "verified": true,
+      "verify_phrases": [
+        "June 9, 1989"
+      ]
+    },
+    {
+      "id": "63-AAAAA",
+      "title": "NESHAP for Lime Manufacturing Plants",
+      "program": "NESHAP",
+      "citation": "40 CFR part 63 subpart AAAAA",
+      "ecfr": {
+        "part": "63",
+        "subpart": "AAAAA",
+        "applicability": "63.7081"
+      },
+      "fr": {
+        "part": "63",
+        "term": "\"lime manufacturing\""
+      },
+      "scope": "facility",
+      "relevant_if": {
+        "field": "facility.is_lime_plant",
+        "op": "is_true"
+      },
+      "relevance_unknown_why": "Could not tell whether this is a lime manufacturing plant (give naics or kiln product).",
+      "rules": [
+        {
+          "when": {
+            "field": "facility.major_hap",
+            "op": "is_true"
+          },
+          "verdict": "applies",
+          "why": "Lime manufacturing plant that is, or is part of, a major source of HAP (§ 63.7081(a)); check the pulp mill and beet sugar exclusions."
+        },
+        {
+          "when": {
+            "field": "facility.major_hap",
+            "op": "is_false"
+          },
+          "verdict": "skip",
+          "why": "Subpart AAAAA covers major sources only (§ 63.7081(a))."
+        }
+      ],
+      "unknown_why": "Subpart AAAAA covers major sources only; HAP status is not given.",
+      "verified": true,
+      "verify_phrases": [
+        "lime manufacturing plant (LMP)",
+        "major source"
+      ]
+    },
+    {
+      "id": "60-HH",
+      "title": "NSPS for Lime Manufacturing Plants (rotary lime kilns)",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart HH",
+      "ecfr": {
+        "part": "60",
+        "subpart": "HH",
+        "applicability": "60.340"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"lime manufacturing\""
+      },
+      "scope": "unit",
+      "unit_types": [
+        "kiln"
+      ],
+      "rules": [
+        {
+          "when": {
+            "field": "unit.product",
+            "op": "ne",
+            "value": "lime"
+          },
+          "verdict": "skip",
+          "why": "Not a lime kiln."
+        },
+        {
+          "when": {
+            "field": "unit.kiln_type",
+            "op": "ne",
+            "value": "rotary"
+          },
+          "verdict": "skip",
+          "why": "Subpart HH covers rotary lime kilns only (§ 60.340(a))."
+        },
+        {
+          "when": {
+            "field": "unit.nsps_date",
+            "op": "after",
+            "value": "1977-05-03"
+          },
+          "verdict": "applies",
+          "why": "Rotary lime kiln that commenced construction or modification after May 3, 1977 (§ 60.340(c))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "unit.construction_date",
+                "op": "on_or_before",
+                "value": "1977-05-03"
+              },
+              {
+                "field": "unit.modified_or_reconstructed",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "skip",
+          "why": "Built on or before May 3, 1977 and not modified since (§ 60.340(c))."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Dates do not settle the May 3, 1977 test."
+      },
+      "unknown_why": "Subpart HH needs the kiln's product, kiln type and construction/modification dates.",
+      "verified": true,
+      "verify_phrases": [
+        "rotary lime kiln",
+        "May 3, 1977"
+      ]
+    },
+    {
+      "id": "98-H",
+      "title": "GHG Reporting Program: Cement Production",
+      "program": "GHGRP",
+      "citation": "40 CFR part 98 subpart H",
+      "ecfr": {
+        "part": "98",
+        "subpart": "H",
+        "applicability": "98.80"
+      },
+      "fr": {
+        "part": "98",
+        "term": "\"greenhouse gas reporting\""
+      },
+      "scope": "facility",
+      "relevant_if": {
+        "field": "facility.is_cement_plant",
+        "op": "is_true"
+      },
+      "rules": [
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "applies",
+          "why": "Cement production is listed in Table A-3: report regardless of the amount emitted (§ 98.2(a)(1)). EPA has proposed changes to the GHG Reporting Program; check usair_fr_recent for part 98."
+        }
+      ],
+      "verified": true,
+      "verify_phrases": [
+        "cement production"
+      ]
+    },
+    {
+      "id": "98-S",
+      "title": "GHG Reporting Program: Lime Manufacturing",
+      "program": "GHGRP",
+      "citation": "40 CFR part 98 subpart S",
+      "ecfr": {
+        "part": "98",
+        "subpart": "S",
+        "applicability": "98.190"
+      },
+      "fr": {
+        "part": "98",
+        "term": "\"greenhouse gas reporting\""
+      },
+      "scope": "facility",
+      "relevant_if": {
+        "field": "facility.is_lime_plant",
+        "op": "is_true"
+      },
+      "rules": [
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "applies",
+          "why": "Lime manufacturing is listed in Table A-3: report regardless of the amount emitted (§ 98.2(a)(1)). EPA has proposed changes to the GHG Reporting Program; check usair_fr_recent for part 98."
+        }
+      ],
+      "verified": true,
+      "verify_phrases": [
+        "lime manufacturing"
+      ]
+    },
+    {
+      "id": "98-C",
+      "title": "GHG Reporting Program: General Stationary Fuel Combustion",
+      "program": "GHGRP",
+      "citation": "40 CFR part 98 subpart C",
+      "ecfr": {
+        "part": "98",
+        "subpart": "C",
+        "applicability": "98.2"
+      },
+      "fr": {
+        "part": "98",
+        "term": "\"greenhouse gas reporting\""
+      },
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "facility.ghg_all_in_category",
+            "op": "flagged"
+          },
+          "verdict": "applies",
+          "why": "Cement or lime production is a Table A-3 source category, so stationary fuel combustion is reported under subpart C regardless of the amount emitted (§ 98.2(a)(1))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "facility.ghg_co2e_tpy",
+                "op": "gte",
+                "value": 25000
+              },
+              {
+                "field": "facility.combustion_heat_at_least_30",
+                "op": "is_true"
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "At least 25,000 metric tons CO2e per year and an aggregate maximum rated heat input of at least 30 MMBtu/hr from the listed stationary fuel combustion units (§ 98.2(a)(3))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "facility.ghg_all_in_category",
+                "op": "is_false"
+              },
+              {
+                "field": "facility.ghg_co2e_tpy",
+                "op": "lt",
+                "value": 25000
+              }
+            ]
+          },
+          "verdict": "check_with_ehs",
+          "why": "Below 25,000 metric tons CO2e per year, and this profile is not cement or lime. Other Table A-3 categories still report at any level (§ 98.2(a)(1)). This pack does not screen them, so the low number is not a skip."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Subpart C is not settled. The combustion-only path needs both 25,000 metric tons CO2e and at least 30 MMBtu/hr aggregate heat input (§ 98.2(a)(3)). A listed heat input below 30, or a missing one, is not enough to say the rule applies."
+      },
+      "unknown_why": "Subpart C needs the emissions, whether this is cement or lime, and the aggregate heat input. A missing fact is not treated as outside those categories.",
+      "verified": true,
+      "verify_phrases": [
+        "25,000 metric tons CO2e",
+        "Table A-3"
+      ]
+    },
+    {
+      "id": "70",
+      "title": "Title V operating permit (State programs, part 70)",
+      "program": "Title V",
+      "citation": "40 CFR part 70",
+      "ecfr": {
+        "part": "70",
+        "applicability": "70.3"
+      },
+      "fr": {
+        "part": "70",
+        "term": "\"operating permit\""
+      },
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "facility.title_v_permit",
+            "op": "flagged"
+          },
+          "verdict": "applies",
+          "why": "The facility already holds a title V permit."
+        },
+        {
+          "when": {
+            "field": "results.63-LLL",
+            "op": "eq",
+            "value": "applies"
+          },
+          "verdict": "applies",
+          "why": "Sources subject to subpart LLL are also subject to title V permitting (§ 63.1340(d))."
+        },
+        {
+          "when": {
+            "field": "results.63-EEE",
+            "op": "eq",
+            "value": "applies"
+          },
+          "verdict": "applies",
+          "why": "Hazardous waste combustors are subject to title V (§ 63.1200(a)(2)-(3))."
+        },
+        {
+          "when": {
+            "field": "facility.major_hap",
+            "op": "is_true"
+          },
+          "verdict": "applies",
+          "why": "Major source of HAP (§ 70.3(a)(1))."
+        },
+        {
+          "when": {
+            "field": "facility.criteria_pte_major",
+            "op": "is_true"
+          },
+          "verdict": "applies",
+          "why": "Major source of a regulated pollutant (§ 70.3(a)(1))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "facility.major_hap",
+                "op": "is_false"
+              },
+              {
+                "field": "facility.criteria_pte_major",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "check_with_ehs",
+          "why": "Not major on the facts given, but an NSPS or NESHAP can still require a title V permit (§ 70.3(a)(2)-(3), (b)). Check the rules flagged above."
+        }
+      ],
+      "unknown_why": "Title V turns on major-source status (HAP and criteria pollutants) or an existing permit.",
+      "verified": true,
+      "verify_phrases": [
+        "major source",
+        "section 111",
+        "section 112"
+      ]
+    },
+    {
+      "id": "64",
+      "title": "Compliance Assurance Monitoring (CAM) (check only)",
+      "program": "CAM",
+      "citation": "40 CFR part 64",
+      "ecfr": {
+        "part": "64",
+        "applicability": "64.2"
+      },
+      "fr": {
+        "part": "64",
+        "term": "\"compliance assurance monitoring\""
+      },
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "results.70",
+            "op": "eq",
+            "value": "skip"
+          },
+          "verdict": "skip",
+          "why": "CAM applies only at sources required to hold a title V permit."
+        },
+        {
+          "when": {
+            "field": "facility.uses_control_devices",
+            "op": "is_false"
+          },
+          "verdict": "skip",
+          "why": "CAM applies only to units that use a control device to meet a limit (§ 64.2(a)(2))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "results.70",
+                "op": "eq",
+                "value": "applies"
+              },
+              {
+                "field": "facility.uses_control_devices",
+                "op": "is_true"
+              }
+            ]
+          },
+          "verdict": "check_with_ehs",
+          "why": "Title V source with control devices: CAM applies per pollutant per unit whose pre-control potential emissions reach the major-source level (§ 64.2(a)), minus the exemptions in § 64.2(b)."
+        }
+      ],
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Title V status is unsettled, so CAM is too."
+      },
+      "unknown_why": "CAM depends on title V status and whether units use control devices.",
+      "verified": true,
+      "verify_phrases": [
+        "control device",
+        "potential pre-control device emissions"
+      ]
+    }
+  ]
+}

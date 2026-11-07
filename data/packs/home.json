@@ -1,0 +1,549 @@
+{
+  "name": "home",
+  "version": "0.1.0",
+  "layer": "home",
+  "description": "Seed pack for the federal air rules a household or small shop runs into: outdoor burning, idling, wood heating, paints and solvents, spray coating. Where no federal rule reaches the person, it says so and points to the state's SIP.",
+  "verdicts": [
+    "applies",
+    "check",
+    "exempt",
+    "product_rule",
+    "no_federal_rule",
+    "not_applicable"
+  ],
+  "fallback_verdict": "check",
+  "skip_verdict": "not_applicable",
+  "never_skip_without_evidence": true,
+  "entries": [
+    {
+      "id": "home-outdoor-burning",
+      "topic": "outdoor_burning",
+      "title": "Outdoor and backyard burning",
+      "program": "State/local (SIP)",
+      "citation": "No federal rule for residential burning; state SIP rules in 40 CFR part 52",
+      "ecfr": {
+        "part": "52"
+      },
+      "sip_topic": "outdoor_burning",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "all": [
+              {
+                "field": "home.role",
+                "op": "eq",
+                "value": "small_shop"
+              },
+              {
+                "field": "home.burning.what",
+                "op": "any_in",
+                "value": [
+                  "trash",
+                  "commercial_waste",
+                  "pallets",
+                  "tires",
+                  "construction_debris",
+                  "waste_oil"
+                ]
+              }
+            ]
+          },
+          "verdict": "check",
+          "why": "Burning business waste is not backyard burning: it can fall under federal incinerator rules (CISWI, 40 CFR part 60 subparts CCCC/DDDD) and waste law, and most states ban it outright."
+        },
+        {
+          "when": {
+            "field": "home.burning.what",
+            "op": "any_in",
+            "value": [
+              "tires",
+              "plastic",
+              "trash",
+              "treated_wood"
+            ]
+          },
+          "verdict": "no_federal_rule",
+          "why": "No federal air rule covers a household burning its own waste, but burning trash, plastics, tires or treated wood is banned or restricted in nearly every state. Run usair_sip_lookup for your state."
+        },
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "no_federal_rule",
+          "why": "EPA has no federal rule for residential yard-waste burning. States, counties and cities regulate it (burn bans, permits, seasons), often through their SIP. Run usair_sip_lookup for your state."
+        }
+      ],
+      "verified": false,
+      "verify_phrases": []
+    },
+    {
+      "id": "home-idling",
+      "topic": "idling",
+      "title": "Vehicle idling",
+      "program": "State/local (SIP)",
+      "citation": "No federal idling limit for vehicles; state SIP rules in 40 CFR part 52",
+      "ecfr": {
+        "part": "52"
+      },
+      "sip_topic": "idling",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "no_federal_rule",
+          "why": "There is no federal limit on how long a car, truck or bus may idle. Many states and cities set limits (often 3 to 5 minutes for heavy-duty diesels), some through their SIP. Run usair_sip_lookup for your state."
+        }
+      ],
+      "verified": false,
+      "verify_phrases": []
+    },
+    {
+      "id": "60-AAA",
+      "topic": "wood_heating",
+      "title": "NSPS for New Residential Wood Heaters (stoves, pellet stoves)",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart AAA",
+      "ecfr": {
+        "part": "60",
+        "subpart": "AAA",
+        "applicability": "60.530"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"residential wood heaters\""
+      },
+      "sip_topic": "wood_heating",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "home.wood_heater.kind",
+            "op": "in",
+            "value": [
+              "hydronic_heater",
+              "outdoor_wood_boiler",
+              "forced_air_furnace",
+              "central_heater"
+            ]
+          },
+          "verdict": "not_applicable",
+          "why": "Hydronic heaters and forced-air furnaces fall under subpart QQQQ, not AAA (§ 60.530(c)(1))."
+        },
+        {
+          "when": {
+            "field": "home.wood_heater.kind",
+            "op": "in",
+            "value": [
+              "fireplace",
+              "masonry_fireplace",
+              "site_built_fireplace"
+            ]
+          },
+          "verdict": "no_federal_rule",
+          "why": "Site-built masonry fireplaces are not residential heating devices under subpart AAA (§ 60.530(c)(3)). Local burn-day rules can still apply."
+        },
+        {
+          "when": {
+            "field": "home.wood_heater.kind",
+            "op": "eq",
+            "value": "masonry_heater"
+          },
+          "verdict": "no_federal_rule",
+          "why": "Residential masonry heaters are not affected wood heaters (§ 60.530(c)(2))."
+        },
+        {
+          "when": {
+            "field": "home.wood_heater.buying_new",
+            "op": "flagged"
+          },
+          "verdict": "applies",
+          "why": "Subpart AAA reaches anyone who sells, installs or operates an affected wood heater (§ 60.530(a)). Buy only a model with a current EPA certificate, burn only fuels the manual allows (§ 60.532(f) bans trash, plastics, treated wood and more), and operate it as the manual says (§ 60.532(g))."
+        },
+        {
+          "when": {
+            "any": [
+              {
+                "field": "home.wood_heater.manufacture_date",
+                "op": "on_or_after",
+                "value": "2015-05-15"
+              },
+              {
+                "all": [
+                  {
+                    "field": "home.wood_heater.manufacture_date",
+                    "op": "on_or_after",
+                    "value": "1988-07-01"
+                  },
+                  {
+                    "field": "home.wood_heater.manufacture_date",
+                    "op": "before",
+                    "value": "2015-05-15"
+                  },
+                  {
+                    "field": "home.wood_heater.epa_certified",
+                    "op": "is_true"
+                  }
+                ]
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Affected under § 60.530(a)(2) when manufactured or sold on or after May 15, 2015, or under § 60.530(a)(1) when manufactured on or after July 1, 1988 and before that date and reported as EPA-certified. A certificate with no manufacture date is not enough: (a)(1) still needs the date. Burn only allowed fuels (§ 60.532(f)) and operate it as the manual says (§ 60.532(g))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "home.wood_heater.manufacture_date",
+                "op": "before",
+                "value": "1988-07-01"
+              },
+              {
+                "field": "home.wood_heater.epa_certified",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "no_federal_rule",
+          "why": "An uncertified stove made before July 1, 1988 is not an affected wood heater. States and cities may still restrict its use (burn bans, change-out rules) or its sale."
+        }
+      ],
+      "default": {
+        "verdict": "check",
+        "why": "Made between 1988 and 2015 without a certificate on record: check the label for an EPA certificate."
+      },
+      "unknown_why": "Subpart AAA turns on the heater type, when it was made, and whether it carries an EPA certificate.",
+      "verified": true,
+      "verify_phrases": [
+        "install or operate an affected wood heater",
+        "May 15, 2015",
+        "Prohibited fuel types",
+        "consistent with the owner's manual"
+      ],
+      "verify_sections": [
+        "60.532"
+      ]
+    },
+    {
+      "id": "60-QQQQ",
+      "topic": "wood_heating",
+      "title": "NSPS for New Residential Hydronic Heaters and Forced-Air Furnaces",
+      "program": "NSPS",
+      "citation": "40 CFR part 60 subpart QQQQ",
+      "ecfr": {
+        "part": "60",
+        "subpart": "QQQQ",
+        "applicability": "60.5472"
+      },
+      "fr": {
+        "part": "60",
+        "term": "\"hydronic heaters\""
+      },
+      "sip_topic": "wood_heating",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "home.wood_heater.kind",
+            "op": "not_in",
+            "value": [
+              "hydronic_heater",
+              "outdoor_wood_boiler",
+              "forced_air_furnace",
+              "central_heater"
+            ]
+          },
+          "verdict": "not_applicable",
+          "why": "Not a hydronic heater, forced-air furnace or other central heater."
+        },
+        {
+          "when": {
+            "field": "home.wood_heater.buying_new",
+            "op": "flagged"
+          },
+          "verdict": "applies",
+          "why": "Subpart QQQQ reaches anyone who sells, installs or operates a central heater made on or after May 15, 2015 (§ 60.5472(a)): buy a certified model and follow its manual."
+        },
+        {
+          "when": {
+            "field": "home.wood_heater.manufacture_date",
+            "op": "on_or_after",
+            "value": "2015-05-15"
+          },
+          "verdict": "applies",
+          "why": "Central heater made on or after May 15, 2015 (§ 60.5472(a))."
+        },
+        {
+          "when": {
+            "field": "home.wood_heater.manufacture_date",
+            "op": "before",
+            "value": "2015-05-15"
+          },
+          "verdict": "no_federal_rule",
+          "why": "Made before May 15, 2015, so subpart QQQQ does not reach it. Many states regulate outdoor wood boilers (setbacks, stack height); check the SIP."
+        }
+      ],
+      "unknown_why": "Subpart QQQQ turns on the heater type and when it was made.",
+      "verified": true,
+      "verify_phrases": [
+        "residential hydronic heater, forced-air furnace or other central heater manufactured on or after May 15, 2015"
+      ]
+    },
+    {
+      "id": "59-D",
+      "topic": "paint_solvent",
+      "title": "VOC limits for Architectural Coatings (house paint, primers, stains, sealers)",
+      "program": "CAA section 183(e) consumer and commercial products",
+      "citation": "40 CFR part 59 subpart D",
+      "ecfr": {
+        "part": "59",
+        "subpart": "D",
+        "applicability": "59.400"
+      },
+      "fr": {
+        "part": "59",
+        "term": "\"architectural coatings\""
+      },
+      "sip_topic": "paint_solvent",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "home.makes_or_imports_coatings",
+            "op": "flagged"
+          },
+          "verdict": "applies",
+          "why": "Manufacturers and importers of architectural coatings sold in the US must meet the VOC content limits, labeling and reporting (§ 59.400(a))."
+        },
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "product_rule",
+          "why": "The federal VOC limits bind the companies that make or import the paint, not the person painting (§ 59.400). Buying from normal retail channels covers you. Several states and air districts set stricter limits on what may be sold or applied; check the SIP."
+        }
+      ],
+      "verified": true,
+      "verify_phrases": [
+        "manufactured on or after September 13, 1999 for sale or distribution in the United States"
+      ]
+    },
+    {
+      "id": "59-C",
+      "topic": "paint_solvent",
+      "title": "VOC limits for Consumer Products (cleaners, adhesives, solvents)",
+      "program": "CAA section 183(e) consumer and commercial products",
+      "citation": "40 CFR part 59 subpart C",
+      "ecfr": {
+        "part": "59",
+        "subpart": "C",
+        "applicability": "59.201"
+      },
+      "fr": {
+        "part": "59",
+        "term": "\"consumer products\""
+      },
+      "sip_topic": "paint_solvent",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "home.makes_or_imports_coatings",
+            "op": "flagged"
+          },
+          "verdict": "applies",
+          "why": "The regulated entity is the manufacturer or importer, and a distributor named on the label (§ 59.201(b))."
+        },
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "product_rule",
+          "why": "VOC limits for household products bind the manufacturer, importer or labeled distributor, not the user (§ 59.201(b))."
+        }
+      ],
+      "verified": true,
+      "verify_phrases": [
+        "The regulated entity is: the manufacturer or importer of the product"
+      ]
+    },
+    {
+      "id": "59-E",
+      "topic": "paint_solvent",
+      "title": "Reactivity limits for Aerosol Coatings (spray cans)",
+      "program": "CAA section 183(e) consumer and commercial products",
+      "citation": "40 CFR part 59 subpart E",
+      "ecfr": {
+        "part": "59",
+        "subpart": "E",
+        "applicability": "59.500"
+      },
+      "fr": {
+        "part": "59",
+        "term": "\"aerosol coatings\""
+      },
+      "sip_topic": "paint_solvent",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "field": "home.makes_or_imports_coatings",
+            "op": "flagged"
+          },
+          "verdict": "applies",
+          "why": "Regulated entities (manufacturers, importers, labeled distributors) must meet the product-weighted reactivity limits and labeling rules (§ 59.500)."
+        },
+        {
+          "when": {
+            "always": true
+          },
+          "verdict": "product_rule",
+          "why": "Spray-can limits bind the regulated entities that make or sell the product (§ 59.500), not the user."
+        }
+      ],
+      "verified": true,
+      "verify_phrases": [
+        "product-weighted reactivity (PWR) limits"
+      ]
+    },
+    {
+      "id": "63-HHHHHH",
+      "topic": "spray_coating",
+      "title": "NESHAP for Paint Stripping and Miscellaneous Surface Coating at Area Sources (autobody, spray booths)",
+      "program": "NESHAP (area source)",
+      "citation": "40 CFR part 63 subpart HHHHHH",
+      "ecfr": {
+        "part": "63",
+        "subpart": "HHHHHH",
+        "applicability": "63.11169"
+      },
+      "fr": {
+        "part": "63",
+        "term": "\"paint stripping\""
+      },
+      "sip_topic": "spray_coating",
+      "scope": "facility",
+      "rules": [
+        {
+          "when": {
+            "all": [
+              {
+                "field": "home.role",
+                "op": "eq",
+                "value": "homeowner"
+              },
+              {
+                "field": "home.coatings.for_compensation",
+                "op": "is_false"
+              },
+              {
+                "field": "home.coatings.vehicles_per_year",
+                "op": "lte",
+                "value": 2
+              }
+            ]
+          },
+          "verdict": "exempt",
+          "why": "Individuals coating their own vehicles, possessions or property as a hobby or for maintenance, or for others without pay, are excluded; spray-coating more than two motor vehicles a year ends the exclusion (§ 63.11169(d)(3))."
+        },
+        {
+          "when": {
+            "field": "home.coatings.paint_stripping_methylene_chloride",
+            "op": "is_true"
+          },
+          "verdict": "applies",
+          "why": "Paint stripping with a methylene chloride stripper (§ 63.11169(a))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "home.coatings.spray_applies",
+                "op": "is_true"
+              },
+              {
+                "field": "home.coatings.substrates",
+                "op": "any_in",
+                "value": [
+                  "motor_vehicles",
+                  "mobile_equipment"
+                ]
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Autobody refinishing: spray-applied coating of motor vehicles or mobile equipment, whatever the coating contains (§ 63.11169(b)). Expect a spray booth with filters, HVLP-type guns, painter training and an initial notification."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "home.coatings.spray_applies",
+                "op": "is_true"
+              },
+              {
+                "field": "home.coatings.target_hap",
+                "op": "is_true"
+              },
+              {
+                "field": "home.coatings.substrates",
+                "op": "any_in",
+                "value": [
+                  "metal",
+                  "plastic",
+                  "metal_parts",
+                  "plastic_parts"
+                ]
+              }
+            ]
+          },
+          "verdict": "applies",
+          "why": "Spray-applying coatings that contain chromium, lead, manganese, nickel or cadmium to metal or plastic parts (§ 63.11169(c))."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "home.coatings.spray_applies",
+                "op": "is_true"
+              },
+              {
+                "field": "home.coatings.target_hap",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "not_applicable",
+          "why": "Spray coating of parts (not vehicles) with coatings free of the five target HAP is outside § 63.11169(c)."
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "field": "home.coatings.spray_applies",
+                "op": "is_false"
+              },
+              {
+                "field": "home.coatings.paint_stripping_methylene_chloride",
+                "op": "is_false"
+              }
+            ]
+          },
+          "verdict": "not_applicable",
+          "why": "No spray coating and no methylene chloride stripping."
+        }
+      ],
+      "unknown_why": "Subpart HHHHHH turns on who is painting (and for pay), what is sprayed onto what, and whether the coatings contain the target HAP (Cr, Pb, Mn, Ni, Cd).",
+      "notes": "Assumes the shop is an area source of HAP (true for nearly all small shops); a major source falls under other NESHAPs.",
+      "verified": true,
+      "verify_phrases": [
+        "Autobody refinishing operations",
+        "personal vehicles, possessions, or property",
+        "more than two motor vehicles"
+      ]
+    }
+  ]
+}

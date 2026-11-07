@@ -1,0 +1,47 @@
+{
+  "layer": "plant",
+  "how_to_use": "Copy profile, fill in what you know, leave the rest null. Unknown facts make a rule come back check_with_ehs, never skip. Pass it as usair_plant_triage(profile=...).",
+  "profile": {
+    "name": "Your plant",
+    "state": "TX",
+    "naics": "327310",
+    "hap_status": null,
+    "criteria_pte_major": null,
+    "title_v_permit": null,
+    "uses_control_devices": null,
+    "ghg_co2e_tpy": null,
+    "coal_processed_tpd": null,
+    "burns_hazardous_waste": null,
+    "burns_solid_waste": null,
+    "units": [
+      {"id": "K1", "type": "kiln", "product": "cement", "kiln_type": "rotary", "fuel": ["coal"], "construction_date": null,
+       "modified_date": null, "modified_or_reconstructed": null},
+      {"id": "EG1", "type": "emergency_generator", "fuel": "diesel", "hp": null, "manufacture_date": null, "order_date": null},
+      {"id": "B1", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": null, "construction_date": null}
+    ]
+  },
+  "fields": {
+    "naics": "6-digit NAICS code(s). 327310 = cement, 327410 = lime.",
+    "hap_status": "major (potential to emit >= 10 tpy of one HAP or >= 25 tpy combined), area, or null.",
+    "criteria_pte_major": "true if potential to emit of any criteria pollutant reaches the title V major-source level (usually 100 tpy).",
+    "title_v_permit": "true if the site already holds a part 70/71 permit.",
+    "uses_control_devices": "true if any unit relies on a control device (baghouse, scrubber, SCR, ...) to meet a limit.",
+    "ghg_co2e_tpy": "Annual GHG emissions, metric tons CO2e.",
+    "coal_processed_tpd": "Tons of coal processed per day (for NSPS subpart Y).",
+    "burns_hazardous_waste": "true if any kiln burns RCRA hazardous waste (subpart EEE instead of LLL).",
+    "burns_solid_waste": "true if any kiln combusts a solid waste under 40 CFR part 241 (CISWI).",
+    "units[].type": "kiln, clinker_cooler, raw_mill, finish_mill, raw_material_dryer, storage, conveyor_transfer, bagging_loading, open_clinker_pile, crusher, screen, coal_mill, stationary_rice (aliases: engine, generator, emergency_generator, fire_pump), boiler, process_heater.",
+    "units[].product": "Kilns: cement or lime.",
+    "units[].kiln_type": "Kilns: rotary or other (NSPS HH covers rotary lime kilns).",
+    "units[].fuel": "List: coal, petcoke, natural_gas, diesel, fuel_oil, propane, biomass, tires, ...",
+    "units[].construction_date": "YYYY-MM-DD (YYYY or YYYY-MM are accepted; a partial date that straddles a threshold stays unknown).",
+    "units[].modified_date": "Latest NSPS modification or reconstruction, if any.",
+    "units[].modified_or_reconstructed": "false if you know the unit was never modified or reconstructed; needed before an old unit can be skipped.",
+    "units[].follows_subpart_f": "Crushers/screens: true if the unit comes after a subpart F facility in the process (NSPS OOO then does not apply).",
+    "units[].manufacture_date": "Engines: date of manufacture.",
+    "units[].order_date": "Engines: date the owner ordered the engine (when NSPS construction commences).",
+    "units[].use": "Engines: emergency, non_emergency, or fire_pump.",
+    "units[].hp": "Engines: brake horsepower (or give kw).",
+    "units[].mmbtu_hr": "Boilers: maximum design heat input, MMBtu/hr."
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "layer": "plant",
+  "fictional": true,
+  "note": "Fictional plant for demos and tests. Every name, date and number is invented.",
+  "profile": {
+    "name": "Mesa Gris Cement Works (fictional)",
+    "state": "TX",
+    "naics": "327310",
+    "hap_status": "major",
+    "criteria_pte_major": true,
+    "title_v_permit": true,
+    "uses_control_devices": true,
+    "ghg_co2e_tpy": 1100000,
+    "coal_processed_tpd": 450,
+    "burns_hazardous_waste": false,
+    "burns_solid_waste": "unknown",
+    "units": [
+      {"id": "K1", "type": "kiln", "product": "cement", "kiln_type": "rotary", "fuel": ["coal", "petcoke", "natural_gas"],
+       "construction_date": "1979-06-01", "modified_date": "2008-10-01"},
+      {"id": "CC1", "type": "clinker_cooler", "construction_date": "1979-06-01", "modified_or_reconstructed": false},
+      {"id": "RM1", "type": "raw_mill", "construction_date": "1979-06-01", "modified_or_reconstructed": false},
+      {"id": "FM1", "type": "finish_mill", "construction_date": "1968-04-01", "modified_or_reconstructed": false},
+      {"id": "FM2", "type": "finish_mill", "construction_date": "2012-03-01"},
+      {"id": "CM1", "type": "coal_mill", "construction_date": "1979-06-01"},
+      {"id": "SILO1", "type": "storage", "construction_date": "1979-06-01", "modified_or_reconstructed": false},
+      {"id": "PILE1", "type": "open_clinker_pile"},
+      {"id": "CR1", "type": "crusher", "construction_date": "1995-04-01", "follows_subpart_f": false},
+      {"id": "EG1", "type": "emergency_generator", "fuel": "diesel", "hp": 750, "manufacture_date": "2011-02-01",
+       "order_date": "2010-11-15"},
+      {"id": "FP1", "type": "fire_pump", "fuel": "diesel", "hp": 300, "manufacture_date": "2004-06-01",
+       "modified_or_reconstructed": false},
+      {"id": "B1", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": 12, "construction_date": "2014-09-01"}
+    ]
+  }
+}
