@@ -110,6 +110,33 @@ PLANT_TRIAGE = {
     },
 }
 
+PLANT_COMPARE = {
+    "name": "usair_plant_compare",
+    "description": (
+        "US air rules: what changed between two plant scenarios? "
+        "Run the same bundled applicability pack on two cement or lime profiles and return the "
+        "input fields that differ, the rule and unit verdicts that differ, reason or missing-fact "
+        "changes, and how many rules stayed the same. Pass before_profile/after_profile or "
+        "before_fixture/after_fixture (cement_plant_demo, cement_ciswi_after, lime_plant_demo). "
+        "This tool does not fetch eCFR or the Federal Register. Citations are the bundled pack. "
+        "A missing fact stays check_with_ehs or check. Not a compliance determination."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "before_profile": {"type": "object", "description": "Plant profile before the change. See /usair template plant."},
+            "before_fixture": {"type": "string", "description": "Fictional plant fixture, used when before_profile is omitted."},
+            "after_profile": {"type": "object", "description": "Plant profile after the change."},
+            "after_fixture": {"type": "string", "description": "Fictional plant fixture, used when after_profile is omitted."},
+            "rules": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Optional pack entry ids to compare, e.g. ['60-CCCC']. Default: every plant rule.",
+            },
+        },
+        "required": [],
+    },
+}
+
 HOME_CHECK = {
     "name": "usair_home_check",
     "description": (
@@ -154,4 +181,4 @@ SIP_LOOKUP = {
     },
 }
 
-ALL_SCHEMAS = [CFR_GET, CFR_SEARCH, FR_RECENT, PLANT_TRIAGE, HOME_CHECK, SIP_LOOKUP]
+ALL_SCHEMAS = [CFR_GET, CFR_SEARCH, FR_RECENT, PLANT_TRIAGE, PLANT_COMPARE, HOME_CHECK, SIP_LOOKUP]

@@ -21,7 +21,7 @@ _SKILL_DESCRIPTION = (
 
 
 def register(ctx):
-    """Register the six tools, the /usair slash command, the warm CLI, and the quoting skill."""
+    """Register the tools, the /usair slash command, the warm CLI, and the quoting skill."""
 
     def setting(key, default=None):
         try:
@@ -39,7 +39,7 @@ def register(ctx):
             emoji="🏭",
         )
     try:
-        ctx.register_command("usair", slash_usair, description="Demo, template, or list the fictional air-rule profiles")
+        ctx.register_command("usair", slash_usair, description="Demo, compare, template, or list the fictional air-rule profiles")
     except Exception:
         logger.warning("us-air-rules slash command was not registered", exc_info=True)
     try:

@@ -7,6 +7,7 @@ of the live text, unless a source entry says the text was fetched.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -15,6 +16,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from .citations import ecfr_url, label, norm_subpart, parse_citation
 from .client import Cached, Store, UsairError, build_url
+from .compare import CITATION_NOTE, VERIFIED_MEANS, compare_screenings, render_compare, validate_unit_ids
 from .ecfr import HOST as ECFR_HOST, SEARCH_PAGE_CAP, SEARCH_PER_PAGE, TITLES_PATH, Ecfr, current_hits
 from .engine import run_pack
 from .fedreg import FedReg, normalize, resolve_since, resolve_types
@@ -340,6 +342,60 @@ class Tools:
         sources.extend(fr_sources)
         return self._finish(payload, sources)
 
+    # ------------------------------------------------------- usair_plant_compare
+    def plant_compare(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Rerun plant triage on two profiles and diff the structured result. No network."""
+        if _flag(args.get("include_fr")):
+            raise UsairError(
+                "bad_argument",
+                "plant compare does not fetch Federal Register documents.",
+                "Run usair_fr_recent for a part, or usair_cfr_get for a section. Compare only reruns the bundled pack.",
+            )
+        rules = _strings(args.get("rules"))
+        warnings: List[str] = []
+        before_profile, before_fixture = self._compare_side(args, "before", warnings)
+        after_profile, after_fixture = self._compare_side(args, "after", warnings)
+        before_profile = copy.deepcopy(before_profile)
+        after_profile = copy.deepcopy(after_profile)
+        validate_unit_ids(before_profile, "before")
+        validate_unit_ids(after_profile, "after")
+        triage_args: Dict[str, Any] = {}
+        if rules:
+            triage_args["rules"] = rules
+        before_run = self.plant_triage(dict(triage_args, profile=before_profile))
+        after_run = self.plant_triage(dict(triage_args, profile=after_profile))
+        pack = load_pack("plant")
+        diff = compare_screenings(before_profile, after_profile, before_run, after_run, pack, rules or None)
+        for side, run in (("before", before_run), ("after", after_run)):
+            for warning in run.get("warnings") or []:
+                warnings.append(f"{side}: {warning}")
+        payload: Dict[str, Any] = {
+            "layer": "plant",
+            "offline": True,
+            "live_fetch": False,
+            "text_origin": "bundled_pack",
+            "citation_note": CITATION_NOTE,
+            "verified_means": VERIFIED_MEANS,
+            "before": _compare_label(before_run, before_fixture),
+            "after": _compare_label(after_run, after_fixture),
+            "pack": before_run.get("pack"),
+            "warnings": warnings,
+        }
+        payload.update(diff)
+        source = self._pack_source(pack)
+        source["text_origin"] = "bundled_pack"
+        source["live_fetch"] = False
+        finished = self._finish(payload, [source])
+        finished["summary"] = render_compare(finished)
+        return finished
+
+    def _compare_side(self, args: Dict[str, Any], side: str, warnings: List[str]) -> tuple:
+        profile = args.get(f"{side}_profile")
+        fixture = args.get(f"{side}_fixture")
+        if profile and fixture:
+            warnings.append(f"{side}_profile was used; {side}_fixture was ignored.")
+        return resolve_profile({"profile": profile, "fixture": fixture}, "plant")
+
     # --------------------------------------------------------- usair_home_check
     def home_check(self, args: Dict[str, Any]) -> Dict[str, Any]:
         profile, fixture = resolve_profile(args, "home")
@@ -619,6 +675,7 @@ def make_handlers(tools: Optional[Tools] = None) -> Dict[str, Callable]:
         "usair_cfr_search": _as_handler(t.cfr_search, "usair_cfr_search"),
         "usair_fr_recent": _as_handler(t.fr_recent, "usair_fr_recent"),
         "usair_plant_triage": _as_handler(t.plant_triage, "usair_plant_triage"),
+        "usair_plant_compare": _as_handler(t.plant_compare, "usair_plant_compare"),
         "usair_home_check": _as_handler(t.home_check, "usair_home_check"),
         "usair_sip_lookup": _as_handler(t.sip_lookup, "usair_sip_lookup"),
     }
@@ -627,15 +684,21 @@ def make_handlers(tools: Optional[Tools] = None) -> Dict[str, Callable]:
 # ---------------------------------------------------------------- slash command
 
 def slash_usair(raw: str, tools: Optional[Tools] = None) -> str:
-    """/usair demo|template|fixtures. Offline: demo profiles are fictional and make no network call."""
+    """/usair demo|compare|template|fixtures. Demo and compare profiles make no network call."""
     parts = (raw or "").strip().split()
     cmd = parts[0].lower() if parts else "help"
     arg = parts[1].lower() if len(parts) > 1 else ""
     tools = tools or Tools()
     if cmd in ("help", ""):
-        return ("Usage: /usair demo [plant|lime|home|shop] | /usair template [plant|home] | /usair fixtures\n"
-                "demo runs the fictional profiles offline. template prints a blank profile. "
+        return ("Usage: /usair demo [plant|lime|home|shop|compare] | "
+                "/usair compare <before_fixture> <after_fixture> | "
+                "/usair template [plant|home] | /usair fixtures\n"
+                "demo and compare run fictional plant profiles offline. template prints a blank profile. "
                 "Live text is usair_cfr_get / usair_cfr_search / usair_fr_recent / usair_sip_lookup.")
+    if cmd == "compare":
+        if len(parts) != 3:
+            return "Usage: /usair compare <before_fixture> <after_fixture>"
+        return _compare_text(tools, {"before_fixture": parts[1], "after_fixture": parts[2]})
     if cmd == "fixtures":
         lines = ["Fictional fixtures (no real facility):"]
         for name in fixture_names():
@@ -665,8 +728,13 @@ def _demo(which: str, tools: Tools) -> str:
     elif which in ("plant", "cement"):
         result = tools.plant_triage({"fixture": "cement_plant_demo"})
         title = "Cement plant demo (fictional, Mesa Gris)"
+    elif which in ("compare", "diff"):
+        return _compare_text(tools, {
+            "before_fixture": "cement_plant_demo",
+            "after_fixture": "cement_ciswi_after",
+        })
     else:
-        return f"Unknown demo {which!r}. Use plant, lime, home or shop."
+        return f"Unknown demo {which!r}. Use plant, lime, home, shop or compare."
     return title + "\n\n" + _render(result)
 
 
@@ -685,6 +753,24 @@ def _render(result: Dict[str, Any]) -> str:
     lines.append("")
     lines.append(result.get("disclaimer") or DISCLAIMER)
     return "\n".join(lines)
+
+
+def _compare_text(tools: Tools, args: Dict[str, Any]) -> str:
+    try:
+        result = tools.plant_compare(args)
+    except UsairError as err:
+        return err.message
+    return result.get("summary") or ""
+
+
+def _compare_label(run: Dict[str, Any], fixture: Optional[str]) -> Dict[str, Any]:
+    facility = run.get("facility") or {}
+    return {
+        "fixture": fixture,
+        "name": facility.get("name"),
+        "state": facility.get("state"),
+        "units": facility.get("units"),
+    }
 
 
 def cli_warm(tools: Optional[Tools] = None) -> str:

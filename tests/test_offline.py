@@ -5,6 +5,7 @@ Run from the plugin directory:  python -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import gzip
 import importlib.util
@@ -860,6 +861,293 @@ class ReviewRegressions(unittest.TestCase):
         self.assertIn("home.wood_heater.manufacture_date", certificate_only["missing"])
         antique = heater({"manufacture_date": "1980-01-01", "epa_certified": False})
         self.assertEqual(antique["verdict"], "no_federal_rule")
+
+
+class PlantCompare(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.tools = make_tools([], self.root)
+        self.handlers = tools.make_handlers(self.tools)
+
+    def _aligned(self, out):
+        counts = out["counts"]
+        self.assertEqual(
+            counts["verdict_changes"] + counts["explanation_changes"] + counts["unit_set_changes"]
+            + counts["unchanged"] + counts["rules_added"] + counts["rules_removed"],
+            counts["rules_compared"])
+        self.assertEqual(counts["input_changes"], len(out["input_changes"]))
+        self.assertEqual(counts["verdict_changes"], len(out["verdict_changes"]))
+        self.assertEqual(counts["explanation_changes"], len(out["explanation_changes"]))
+        self.assertEqual(counts["unit_set_changes"], len(out["unit_set_changes"]))
+        self.assertEqual(counts["unchanged"], len(out["unchanged_ids"]))
+        self.assertEqual(counts["units_added"], len(out["units_added"]))
+        self.assertEqual(counts["units_removed"], len(out["units_removed"]))
+        pack_ids = [entry["id"] for entry in profiles.load_pack("plant")["entries"]]
+        rank = {eid: i for i, eid in enumerate(pack_ids)}
+        seen = []
+        for key in ("verdict_changes", "explanation_changes", "unit_set_changes"):
+            ids = [row["id"] for row in out[key]]
+            self.assertEqual(ids, sorted(ids, key=lambda eid: rank.get(eid, 10**6)))
+            for row in out[key]:
+                seen.append(row["id"])
+                self.assertEqual(row["citation_origin"], "bundled_pack")
+                unit_ids = [unit["unit_id"] for unit in row["unit_changes"]]
+                self.assertEqual(len(unit_ids), len(set(unit_ids)))
+        seen.extend(out["unchanged_ids"])
+        seen.extend(row["id"] for row in out["rules_added"])
+        seen.extend(row["id"] for row in out["rules_removed"])
+        self.assertEqual(out["unchanged_ids"], sorted(out["unchanged_ids"], key=lambda eid: rank.get(eid, 10**6)))
+        self.assertEqual(len(seen), len(set(seen)))
+        self.assertEqual(len(seen), counts["rules_compared"])
+        self.assertFalse(out["live_fetch"])
+        self.assertTrue(out["offline"])
+        self.assertEqual(out["text_origin"], "bundled_pack")
+        self.assertEqual(out["source"][0]["text_origin"], "bundled_pack")
+        self.assertFalse(out["source"][0]["live_fetch"])
+        self.assertNotIn("retrieved_at", out["source"][0])
+        self.assertNotIn("cache", out["source"][0])
+        self.assertNotIn("stale", out)
+        self.assertIn("not from a fresh reading", out["source"][0]["note"])
+        self.assertEqual(self.tools.store.http.requests, 0)
+        return out
+
+    def test_unknown_solid_waste_fact_changes_ciswi_verdict(self):
+        entry = next(e for e in profiles.load_pack("plant")["entries"] if e["id"] == "60-CCCC")
+        skip_why = next(rule["why"] for rule in entry["rules"] if rule["verdict"] == "skip")
+        out = self._aligned(self.tools.plant_compare({
+            "before_fixture": "cement_plant_demo",
+            "after_fixture": "cement_ciswi_after",
+        }))
+        self.assertEqual(out["input_changes"], [{
+            "path": "burns_solid_waste", "change": "changed", "before": "unknown", "after": False,
+        }])
+        self.assertEqual([row["id"] for row in out["verdict_changes"]], ["60-CCCC"])
+        self.assertEqual(out["explanation_changes"], [])
+        self.assertEqual(out["counts"]["unchanged"], 19)
+        self.assertEqual(out["counts"]["rules_compared"], 20)
+        change = out["verdict_changes"][0]
+        self.assertEqual(change["citation"], entry["citation"])
+        self.assertEqual(change["applicability_section"], "60.2015")
+        self.assertEqual(change["before"]["verdict"], "check_with_ehs")
+        self.assertEqual(change["after"]["verdict"], "skip")
+        self.assertIn(entry["unknown_why"], change["before"]["why"])
+        self.assertIn(skip_why, change["after"]["why"])
+        unit = change["unit_changes"][0]
+        self.assertEqual(unit["unit_id"], "K1")
+        self.assertEqual(unit["change"], "verdict")
+        self.assertEqual(unit["before"]["why"], entry["unknown_why"])
+        self.assertEqual(unit["before"]["missing"], ["unit.burns_solid_waste"])
+        self.assertEqual(unit["after"]["why"], skip_why)
+        self.assertEqual(unit["after"]["missing"], [])
+        self.assertEqual(out["missing_before"], [{
+            "id": "60-CCCC", "unit_id": "K1", "fields": ["unit.burns_solid_waste"],
+        }])
+        self.assertEqual(out["missing_after"], [])
+        self.assertIn("check_with_ehs → skip", out["summary"])
+        self.assertIn("bundled pack, not fetched", out["summary"])
+        self.assertNotIn("retrieved", out["summary"])
+        for banned in ("Holcim", "Carmeuse", "Hatch", "Lafarge"):
+            self.assertNotIn(banned, json.dumps(profiles.load_fixture("cement_ciswi_after")))
+
+    def test_same_inputs_leave_every_rule_unchanged(self):
+        out = self._aligned(self.tools.plant_compare({
+            "before_fixture": "lime_plant_demo",
+            "after_fixture": "lime_plant_demo",
+        }))
+        self.assertEqual(out["input_changes"], [])
+        self.assertEqual(out["verdict_changes"], [])
+        self.assertEqual(out["explanation_changes"], [])
+        self.assertEqual(out["unit_set_changes"], [])
+        self.assertEqual(out["counts"]["unchanged"], out["counts"]["rules_compared"])
+        self.assertGreater(out["counts"]["unchanged"], 0)
+        self.assertIn("Input changes (0):", out["summary"])
+        self.assertIn("Verdict changes (0):", out["summary"])
+
+    def test_known_solid_waste_changes_reason_not_verdict(self):
+        entry = next(e for e in profiles.load_pack("plant")["entries"] if e["id"] == "60-CCCC")
+        flagged = next(rule["why"] for rule in entry["rules"] if rule["when"]["op"] == "is_true")
+        before = {"name": "Kiln check (fictional)", "naics": "327310", "units": [
+            {"id": "K1", "type": "kiln", "product": "cement"}]}
+        after = copy.deepcopy(before)
+        after["burns_solid_waste"] = True
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": before, "after_profile": after, "rules": ["60-CCCC"],
+        }))
+        self.assertEqual(out["verdict_changes"], [])
+        self.assertEqual(len(out["explanation_changes"]), 1)
+        row = out["explanation_changes"][0]
+        self.assertEqual(row["before"]["verdict"], "check_with_ehs")
+        self.assertEqual(row["after"]["verdict"], "check_with_ehs")
+        self.assertEqual(row["unit_changes"][0]["before"]["missing"], ["unit.burns_solid_waste"])
+        self.assertEqual(row["unit_changes"][0]["after"]["missing"], [])
+        self.assertEqual(row["unit_changes"][0]["after"]["why"], flagged)
+        self.assertEqual(out["counts"]["unchanged"], 0)
+        self.assertEqual(out["counts"]["rules_compared"], 1)
+        self.assertIn("verdict unchanged", out["summary"])
+
+    def test_added_unit_does_not_steal_an_existing_id(self):
+        before = {"name": "Crushers (fictional)", "naics": "327310", "units": [
+            {"id": "CR1", "type": "crusher", "construction_date": "1995-04-01", "follows_subpart_f": False}]}
+        after = copy.deepcopy(before)
+        after["units"] = list(before["units"]) + [
+            {"id": "CR2", "type": "crusher", "construction_date": "1996-01-01", "follows_subpart_f": False}]
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": before, "after_profile": after, "rules": ["60-OOO"],
+        }))
+        self.assertEqual(out["units_added"], [{"id": "CR2", "type": "crusher"}])
+        self.assertEqual(out["verdict_changes"], [])
+        self.assertEqual(len(out["unit_set_changes"]), 1)
+        row = out["unit_set_changes"][0]
+        self.assertEqual(row["id"], "60-OOO")
+        self.assertEqual(row["before"]["verdict"], "applies")
+        self.assertEqual(row["after"]["verdict"], "applies")
+        self.assertEqual(row["units_unchanged"], 1)
+        self.assertEqual(row["unit_changes"], [{
+            "unit_id": "CR2", "unit_type": "crusher", "change": "added",
+            "after": row["unit_changes"][0]["after"],
+        }])
+        self.assertEqual(row["unit_changes"][0]["after"]["verdict"], "applies")
+        self.assertNotIn("CR1", [unit["unit_id"] for unit in row["unit_changes"]])
+
+    def test_removed_unit_is_not_paired_with_a_different_id(self):
+        before = {"name": "Crushers (fictional)", "naics": "327310", "units": [
+            {"id": "CR1", "type": "crusher", "construction_date": "1995-04-01", "follows_subpart_f": False},
+            {"id": "CR2", "type": "crusher", "construction_date": "1980-01-01",
+             "follows_subpart_f": False, "modified_or_reconstructed": False},
+        ]}
+        after = {"name": "Crushers (fictional)", "naics": "327310", "units": [
+            {"id": "CR2", "type": "crusher", "construction_date": "1995-04-01",
+             "follows_subpart_f": False, "modified_or_reconstructed": False},
+        ]}
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": before, "after_profile": after, "rules": ["60-OOO"],
+        }))
+        self.assertEqual(out["units_removed"], [{"id": "CR1", "type": "crusher"}])
+        self.assertEqual(out["units_added"], [])
+        row = out["verdict_changes"][0]
+        by_id = {unit["unit_id"]: unit for unit in row["unit_changes"]}
+        self.assertEqual(set(by_id), {"CR1", "CR2"})
+        self.assertEqual(by_id["CR1"]["change"], "removed")
+        self.assertEqual(by_id["CR1"]["before"]["verdict"], "applies")
+        self.assertNotIn("after", by_id["CR1"])
+        self.assertEqual(by_id["CR2"]["change"], "verdict")
+        self.assertEqual(by_id["CR2"]["before"]["verdict"], "skip")
+        self.assertEqual(by_id["CR2"]["after"]["verdict"], "applies")
+        self.assertEqual(row["before"]["verdict"], "applies")
+        self.assertEqual(row["after"]["verdict"], "applies")
+
+    def test_unknown_unit_type_is_reported(self):
+        before = {"name": "Kiln (fictional)", "naics": "327310", "units": [
+            {"id": "K1", "type": "kiln", "product": "cement", "burns_solid_waste": False}]}
+        after = copy.deepcopy(before)
+        after["units"] = list(before["units"]) + [{"id": "W1", "type": "widget"}]
+        out = self._aligned(self.tools.plant_compare({"before_profile": before, "after_profile": after}))
+        self.assertEqual(out["units_added"], [{"id": "W1", "type": "widget"}])
+        self.assertEqual(out["verdict_changes"], [])
+        self.assertEqual(out["unit_set_changes"], [])
+        self.assertTrue(any("unknown type 'widget'" in warning for warning in out["warnings"]))
+        blob = json.dumps(out["verdict_changes"] + out["explanation_changes"] + out["unit_set_changes"])
+        self.assertNotIn("W1", blob)
+        self.assertIn("Warnings:", out["summary"])
+
+    def test_reordered_units_are_the_same_plant(self):
+        before = profiles.load_fixture("cement_plant_demo")["profile"]
+        after = copy.deepcopy(before)
+        after["units"] = list(reversed(before["units"]))
+        out = self._aligned(self.tools.plant_compare({"before_profile": before, "after_profile": after}))
+        self.assertEqual(out["input_changes"], [])
+        self.assertEqual(out["verdict_changes"], [])
+        self.assertEqual(out["explanation_changes"], [])
+        self.assertEqual(out["unit_set_changes"], [])
+
+    def test_order_is_pack_order_and_inputs_are_not_mutated(self):
+        before = {"name": "Kiln (fictional)", "naics": "327310", "units": [
+            {"id": "K1", "type": "kiln", "product": "cement"}]}
+        after = copy.deepcopy(before)
+        after["burns_solid_waste"] = False
+        after["burns_hazardous_waste"] = False
+        snap_before = json.dumps(before)
+        snap_after = json.dumps(after)
+        args = {"before_profile": before, "after_profile": after, "rules": ["60-CCCC", "63-EEE"]}
+        first = self.tools.plant_compare(args)
+        second = self.tools.plant_compare(args)
+        self.assertEqual(first, second)
+        self.assertEqual(json.dumps(before), snap_before)
+        self.assertEqual(json.dumps(after), snap_after)
+        self._aligned(first)
+        self.assertEqual([row["id"] for row in first["verdict_changes"]], ["63-EEE", "60-CCCC"])
+
+    def test_malformed_profiles_fail_closed(self):
+        def err(args):
+            parsed = json.loads(self.handlers["usair_plant_compare"](args))
+            self.assertFalse(parsed["ok"])
+            self.assertEqual(self.tools.store.http.requests, 0)
+            return parsed
+
+        kiln = {"id": "K1", "type": "kiln", "product": "cement"}
+        plant = {"name": "Bad (fictional)", "naics": "327310", "units": [kiln, dict(kiln)]}
+        self.assertEqual(err({"before_profile": plant, "after_profile": plant})["error_type"], "bad_argument")
+        self.assertIn("K1", err({"before_profile": plant, "after_profile": plant})["error"])
+        missing = {"name": "Bad (fictional)", "units": [{"type": "kiln"}]}
+        self.assertIn("no string id", err({"before_profile": missing, "after_fixture": "cement_plant_demo"})["error"])
+        numbered = {"name": "Bad (fictional)", "units": [{"id": 1, "type": "kiln"}]}
+        self.assertEqual(err({"before_profile": numbered, "after_fixture": "cement_plant_demo"})["error_type"], "bad_argument")
+        not_list = {"name": "Bad (fictional)", "units": {"id": "K1"}}
+        self.assertIn("list", err({"before_profile": not_list, "after_fixture": "cement_plant_demo"})["error"])
+        self.assertEqual(err({"before_fixture": "nope", "after_fixture": "cement_plant_demo"})["error_type"], "unknown_fixture")
+        self.assertEqual(err({"before_fixture": "homeowner_demo", "after_fixture": "cement_plant_demo"})["error_type"], "bad_argument")
+        self.assertEqual(err({"before_fixture": "cement_plant_demo"})["error_type"], "bad_argument")
+        self.assertEqual(err({
+            "before_fixture": "cement_plant_demo",
+            "after_fixture": "cement_ciswi_after",
+            "rules": ["not-a-rule"],
+        })["error_type"], "bad_argument")
+        refused = err({
+            "before_fixture": "cement_plant_demo",
+            "after_fixture": "cement_ciswi_after",
+            "include_fr": True,
+        })
+        self.assertEqual(refused["error_type"], "bad_argument")
+        self.assertIn("does not fetch", refused["error"])
+        self.assertIn("No fixture", tools.slash_usair("compare nope cement_ciswi_after", self.tools))
+        self.assertIn("Usage", tools.slash_usair("compare cement_plant_demo", self.tools))
+
+    def test_demo_compare_makes_no_request(self):
+        text = tools.slash_usair("demo compare", self.tools)
+        again = tools.slash_usair("compare cement_plant_demo cement_ciswi_after", self.tools)
+        self.assertEqual(text, again)
+        self.assertIn("cement_plant_demo", text)
+        self.assertIn("cement_ciswi_after", text)
+        self.assertIn("60-CCCC  check_with_ehs → skip", text)
+        self.assertIn("Unchanged rules: 19", text)
+        self.assertIn("not a live eCFR", text)
+        self.assertIn("Screening aid", text)
+        self.assertIn("cement_ciswi_after", tools.slash_usair("fixtures", self.tools))
+        self.assertIn("compare", tools.slash_usair("").lower())
+        self.assertEqual(self.tools.store.http.requests, 0)
+        parsed = json.loads(self.handlers["usair_plant_compare"]({
+            "before_fixture": "cement_plant_demo",
+            "after_fixture": "cement_ciswi_after",
+        }))
+        self.assertTrue(parsed["ok"])
+        self.assertEqual(parsed["summary"], text)
+        self.assertEqual(self.tools.store.http.requests, 0)
+
+    def test_profile_wins_and_says_so(self):
+        tiny = {"name": "Only this (fictional)", "naics": "327310", "units": [
+            {"id": "K1", "type": "kiln", "product": "cement", "burns_solid_waste": False}]}
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": tiny,
+            "before_fixture": "lime_plant_demo",
+            "after_profile": copy.deepcopy(tiny),
+            "after_fixture": "cement_plant_demo",
+        }))
+        self.assertEqual(out["input_changes"], [])
+        self.assertIsNone(out["before"]["fixture"])
+        self.assertEqual(out["before"]["name"], "Only this (fictional)")
+        self.assertTrue(any("before_fixture was ignored" in warning for warning in out["warnings"]))
+        self.assertTrue(any("after_fixture was ignored" in warning for warning in out["warnings"]))
 
 
 if __name__ == "__main__":

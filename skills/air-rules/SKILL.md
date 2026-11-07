@@ -11,6 +11,7 @@ Pick the tool from the question:
 - A topic inside Title 40 ("which section covers open clinker piles"): `usair_cfr_search`, then `usair_cfr_get` on the hit you use.
 - "Anything new on this rule": `usair_fr_recent` with the part and a quoted phrase. A proposed rule is not law. Say so when `type` is Proposed Rule.
 - "Does this apply to my plant / kiln / boiler / generator": `usair_plant_triage` with the profile, or `fixture` `cement_plant_demo` / `lime_plant_demo` when they ask for the demo. Report every finding's `verdict`, `citation` and `why`. Do not drop a `check_with_ehs` row.
+- "What changed between these two plants or scenarios": `usair_plant_compare` with `before_profile` and `after_profile`, or `before_fixture` and `after_fixture`. For the fictional kiln demo, `before_fixture` is `cement_plant_demo` and `after_fixture` is `cement_ciswi_after` (`/usair demo compare`). Report `input_changes`, each `verdict_changes` row (`verdict`, `why`, `missing`, `unit_changes`), `explanation_changes` when the verdict stayed and the reason or missing facts did not, and the `unchanged` count. `live_fetch` is false. Citations in that result are the bundled pack. Do not describe a difference the tool did not return, and do not call it a live eCFR check.
 - "Does this apply to my house / shop / stove / painting": `usair_home_check`. For a `no_federal_rule` or `product_rule` finding, offer `usair_sip_lookup` with the state and the finding's `sip.topic` before you describe state rules.
 - A named state and a topic with no federal rule: `usair_sip_lookup`.
 
