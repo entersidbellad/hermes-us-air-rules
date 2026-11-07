@@ -587,5 +587,280 @@ class FedRegDates(unittest.TestCase):
             fedreg.resolve_types(["poem"])
 
 
+def _hit(section: str, *, start: str, end: Optional[str]) -> dict:
+    return {
+        "starts_on": start, "ends_on": end, "removed": False, "reserved": False,
+        "hierarchy": {"title": "40", "part": section.split(".")[0], "section": section},
+        "headings": {"section": section},
+        "full_text_excerpt": "excerpt",
+    }
+
+
+class ReviewRegressions(unittest.TestCase):
+    def test_filter_still_evaluates_rules_the_answer_reads(self):
+        profile = {
+            "name": "Major boiler, no permit, no controls (fictional)",
+            "hap_status": "major",
+            "title_v_permit": False,
+            "uses_control_devices": False,
+            "units": [{"id": "B", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": 50}],
+        }
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        tool = make_tools([], root)
+        part70 = tool.plant_triage({"profile": profile, "rules": ["70"]})
+        self.assertEqual([f["id"] for f in part70["findings"]], ["70"])
+        self.assertEqual(part70["findings"][0]["verdict"], "applies")
+        self.assertNotIn("63-LLL", part70["not_relevant"])
+        cam = tool.plant_triage({"profile": profile, "rules": ["64"]})
+        self.assertEqual([f["id"] for f in cam["findings"]], ["64"])
+        self.assertEqual(cam["findings"][0]["verdict"], "skip")
+        self.assertIn("control device", cam["findings"][0]["why"])
+
+    def test_coal_throughput_is_evidence_and_a_unit_list_is_not_absence(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        tool = make_tools([], root)
+
+        def row(extra):
+            profile = {"name": "Boiler house (fictional)", "units": [
+                {"id": "B", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": 40}]}
+            profile.update(extra)
+            out = tool.plant_triage({"profile": profile, "rules": ["60-Y"]})
+            self.assertNotIn("60-Y", out["not_relevant"])
+            return out["findings"][0]
+
+        over = row({"coal_processed_tpd": 450})
+        self.assertEqual(over["verdict"], "check_with_ehs")
+        under = row({"coal_processed_tpd": 50})
+        self.assertEqual(under["verdict"], "skip")
+        unknown = row({})
+        self.assertEqual(unknown["verdict"], "check_with_ehs")
+        self.assertIn("facility.handles_coal", unknown["missing"])
+
+    def test_ghg_does_not_skip_or_apply_without_the_cited_facts(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        tool = make_tools([], root)
+
+        def verdict(profile):
+            out = tool.plant_triage({"profile": profile, "rules": ["98-C"]})
+            return out["findings"][0]
+
+        low_unknown = verdict({
+            "name": "No category (fictional)", "ghg_co2e_tpy": 10000,
+            "units": [{"id": "B", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": 10}],
+        })
+        self.assertEqual(low_unknown["verdict"], "check_with_ehs")
+        self.assertNotEqual(low_unknown["verdict"], "skip")
+
+        low_other = verdict({
+            "name": "Not cement or lime (fictional)", "naics": "221112", "ghg_co2e_tpy": 10000,
+            "units": [{"id": "B", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": 10}],
+        })
+        self.assertEqual(low_other["verdict"], "check_with_ehs")
+        self.assertIn("not a skip", low_other["why"])
+
+        high_small_boiler = verdict({
+            "name": "Small boiler (fictional)", "naics": "221112", "ghg_co2e_tpy": 30000,
+            "units": [{"id": "B", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": 12}],
+        })
+        self.assertEqual(high_small_boiler["verdict"], "check_with_ehs")
+
+        high_missing_heat = verdict({
+            "name": "Unrated boiler (fictional)", "naics": "221112", "ghg_co2e_tpy": 30000,
+            "units": [{"id": "B", "type": "boiler", "fuel": "natural_gas"}],
+        })
+        self.assertEqual(high_missing_heat["verdict"], "check_with_ehs")
+        self.assertIn("facility.combustion_heat_at_least_30", high_missing_heat["missing"])
+
+        high_enough = verdict({
+            "name": "Large boiler (fictional)", "naics": "221112", "ghg_co2e_tpy": 30000,
+            "units": [{"id": "B", "type": "boiler", "fuel": "natural_gas", "mmbtu_hr": 40}],
+        })
+        self.assertEqual(high_enough["verdict"], "applies")
+        self.assertIn("30", high_enough["why"])
+
+        cement = verdict({
+            "name": "Cement (fictional)", "naics": "327310", "ghg_co2e_tpy": 10000,
+            "units": [{"id": "K", "type": "kiln", "product": "cement"}],
+        })
+        self.assertEqual(cement["verdict"], "applies")
+
+    def test_known_modification_survives_a_missing_or_partial_construction_date(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        tool = make_tools([], root)
+
+        def subpart_f(unit):
+            out = tool.plant_triage({"profile": {
+                "name": "Kiln (fictional)", "naics": "327310", "units": [unit]}, "rules": ["60-F"]})
+            return out["findings"][0]["verdict"]
+
+        self.assertEqual(subpart_f({
+            "id": "K", "type": "kiln", "product": "cement", "modified_date": "1971-09-01",
+        }), "applies")
+        self.assertEqual(subpart_f({
+            "id": "K", "type": "kiln", "product": "cement",
+            "construction_date": "1971", "modified_date": "1971-09-01",
+        }), "applies")
+        _fac, units, _warnings = profiles.normalize_plant({"naics": "327310", "units": [{
+            "id": "K", "type": "kiln", "product": "cement",
+            "construction_date": "1971", "modified_date": "1971-09-01",
+        }]})
+        self.assertEqual(units[0]["nsps_date"], {"start": "1971-09-01", "end": "1971-12-31"})
+        self.assertEqual(subpart_f({
+            "id": "K", "type": "kiln", "product": "cement", "construction_date": "1971",
+        }), "check_with_ehs")
+
+    def test_stale_title_date_is_not_hidden_by_a_pinned_section(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        cache = Cache(root)
+        cache.write("ecfr-titles", {
+            "up_to_date_as_of": "2020-01-15",
+            "latest_amended_on": "2020-01-14",
+            "latest_issue_date": "2020-01-14",
+        }, {"fetched_at": 0, "url": "https://www.ecfr.gov/api/versioner/v1/titles.json"})
+
+        def transport(url, headers):
+            if "titles.json" in url:
+                raise urllib.error.URLError("down")
+            if "section=63.1340" in url and "/2020-01-15/" in url:
+                return Response(200, SECTION_XML.encode(), {}, url)
+            return Response(404, b"no", {}, url)
+
+        tool = tools.Tools(Store(http=Http(transport, min_interval=0), cache=cache))
+        out = tool.cfr_get({"citation": "40 CFR 63.1340"})
+        self.assertEqual(out["ecfr_date"], "2020-01-15")
+        self.assertTrue(out["stale"])
+        self.assertEqual(out["source"][0]["cache"], "fresh")
+        title = next(s for s in out["source"] if s["name"] == "eCFR Title 40 currency date")
+        self.assertTrue(title["stale"])
+        self.assertIn("last cached copy", title["note"])
+
+    def test_search_reads_a_later_page_when_the_first_is_only_old_versions(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        urls = []
+
+        def page(url):
+            if "page=2" in url:
+                return {"results": [_hit("63.1343", start="2018-07-25", end=None)],
+                        "meta": {"current_page": 2, "total_pages": 2}}
+            return {"results": [_hit(f"63.{i}", start="2010-01-01", end="2011-01-01") for i in range(20)],
+                    "meta": {"current_page": 1, "total_pages": 2}}
+
+        def transport(url, headers):
+            urls.append(url)
+            if "titles.json" in url:
+                return Response(200, _json(TITLES), {}, url)
+            if "/api/search/" in url:
+                return Response(200, _json(page(url)), {}, url)
+            return Response(404, b"no", {}, url)
+
+        tool = tools.Tools(Store(http=Http(transport, min_interval=0), cache=Cache(root)))
+        out = tool.cfr_search({"query": "clinker", "part": "63", "max_results": 5})
+        self.assertEqual(out["results"][0]["section"], "63.1343")
+        self.assertTrue(out["search_complete"])
+        self.assertNotEqual(out.get("message"), "No current Title 40 section matched.")
+        self.assertTrue(any("page=2" in url for url in urls))
+
+        sip = tool.sip_lookup({"state": "TX", "topic": "zz kiln piles"})
+        self.assertEqual(sip["results"][0]["section"], "63.1343")
+        self.assertNotIn("No current part 52 text", sip.get("message", ""))
+
+    def test_search_page_cap_is_not_reported_as_no_match(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        searches = []
+
+        def transport(url, headers):
+            if "titles.json" in url:
+                return Response(200, _json(TITLES), {}, url)
+            if "/api/search/" in url:
+                searches.append(url)
+                page_no = 1
+                marker = "page="
+                if marker in url:
+                    page_no = int(url.split(marker, 1)[1].split("&", 1)[0])
+                body = {
+                    "results": [_hit(f"63.{page_no}{i:02d}", start="2010-01-01", end="2011-01-01") for i in range(20)],
+                    "meta": {"current_page": page_no, "total_pages": 99},
+                }
+                return Response(200, _json(body), {}, url)
+            return Response(404, b"no", {}, url)
+
+        tool = tools.Tools(Store(http=Http(transport, min_interval=0), cache=Cache(root)))
+        out = tool.cfr_search({"query": "expired only", "part": "63"})
+        self.assertEqual(out["results"], [])
+        self.assertFalse(out["search_complete"])
+        self.assertNotIn("No current Title 40 section matched.", out["message"])
+        self.assertEqual(len(searches), 5)
+        sip = tool.sip_lookup({"state": "TX", "topic": "zz nothing current"})
+        self.assertEqual(sip["results"], [])
+        self.assertFalse(sip["search_complete"])
+        self.assertNotIn("No current part 52 text", sip["message"])
+
+    def test_fr_cap_counts_failures_and_keeps_stale_or_empty_sources(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        calls = {"n": 0}
+
+        def down(url, headers):
+            calls["n"] += 1
+            raise urllib.error.URLError("down")
+
+        store = Store(http=Http(down, min_interval=0), cache=Cache(root),
+                      settings=lambda key, default=None: 1 if key == "fr_on_triage_max" else default)
+        out = tools.Tools(store).plant_triage({"fixture": "cement_plant_demo", "include_fr": True})
+        self.assertEqual(calls["n"], 1)
+        self.assertTrue(any("not checked" in note for note in out["fr_notes"]))
+        self.assertTrue(any(note.startswith("Stopped after 1") for note in out["fr_notes"]))
+
+        since = fedreg.resolve_since("2y")
+        key = f'fr-63-"portland cement manufacturing"-{since}-RULE-PRORULE-3'
+        cache = Cache(root)
+        cache.write(key, {"count": 0, "results": []},
+                    {"fetched_at": 1, "url": "https://www.federalregister.gov/api/v1/documents.json"})
+        stale = tools.Tools(Store(http=Http(down, min_interval=0), cache=cache)).plant_triage(
+            {"fixture": "cement_plant_demo", "rules": ["63-LLL"], "include_fr": True})
+        finding = stale["findings"][0]
+        self.assertEqual(finding["fr_recent"], [])
+        self.assertTrue(finding["fr_stale"])
+        self.assertTrue(finding["fr_source"][0]["stale"])
+        self.assertTrue(stale["stale"])
+        self.assertTrue(any(s.get("stale") for s in stale["source"]))
+
+        cache.write(key, FR_DOCS, {"fetched_at": 1, "url": "https://www.federalregister.gov/api/v1/documents.json"})
+        with_docs = tools.Tools(Store(http=Http(down, min_interval=0), cache=cache)).plant_triage(
+            {"fixture": "cement_plant_demo", "rules": ["63-LLL"], "include_fr": True})
+        self.assertEqual(with_docs["findings"][0]["fr_recent"][0]["document_number"], "2026-00001")
+        self.assertTrue(with_docs["stale"])
+
+    def test_wood_certificate_follows_the_manufacture_date_rules(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        tool = make_tools([], root)
+
+        def heater(fields):
+            out = tool.home_check({"profile": {
+                "role": "homeowner", "state": "TX", "topics": ["wood_heating"],
+                "wood_heater": dict({"kind": "wood_stove"}, **fields),
+            }})
+            return next(f for f in out["findings"] if f["id"] == "60-AAA")
+
+        certified_old = heater({"manufacture_date": "1995-06-01", "epa_certified": True})
+        self.assertEqual(certified_old["verdict"], "applies")
+        self.assertIn("60.530(a)(1)", certified_old["why"])
+        post_2015 = heater({"manufacture_date": "2016-01-01"})
+        self.assertEqual(post_2015["verdict"], "applies")
+        certificate_only = heater({"epa_certified": True})
+        self.assertEqual(certificate_only["verdict"], "check")
+        self.assertIn("home.wood_heater.manufacture_date", certificate_only["missing"])
+        antique = heater({"manufacture_date": "1980-01-01", "epa_certified": False})
+        self.assertEqual(antique["verdict"], "no_federal_rule")
+
+
 if __name__ == "__main__":
     unittest.main()

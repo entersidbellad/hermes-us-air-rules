@@ -1141,28 +1141,48 @@
             "op": "flagged"
           },
           "verdict": "applies",
-          "why": "A facility with a Table A-3 source category must also report its stationary fuel combustion under subpart C (§ 98.2(a)(1))."
+          "why": "Cement or lime production is a Table A-3 source category, so stationary fuel combustion is reported under subpart C regardless of the amount emitted (§ 98.2(a)(1))."
         },
         {
           "when": {
-            "field": "facility.ghg_co2e_tpy",
-            "op": "gte",
-            "value": 25000
+            "all": [
+              {
+                "field": "facility.ghg_co2e_tpy",
+                "op": "gte",
+                "value": 25000
+              },
+              {
+                "field": "facility.combustion_heat_at_least_30",
+                "op": "is_true"
+              }
+            ]
           },
           "verdict": "applies",
-          "why": "Combustion emissions of 25,000 metric tons CO2e or more per year (§ 98.2(a)(2)-(3)); (a)(3) also requires an aggregate maximum rated heat input of at least 30 MMBtu/hr."
+          "why": "At least 25,000 metric tons CO2e per year and an aggregate maximum rated heat input of at least 30 MMBtu/hr from the listed stationary fuel combustion units (§ 98.2(a)(3))."
         },
         {
           "when": {
-            "field": "facility.ghg_co2e_tpy",
-            "op": "lt",
-            "value": 25000
+            "all": [
+              {
+                "field": "facility.ghg_all_in_category",
+                "op": "is_false"
+              },
+              {
+                "field": "facility.ghg_co2e_tpy",
+                "op": "lt",
+                "value": 25000
+              }
+            ]
           },
-          "verdict": "skip",
-          "why": "Below 25,000 metric tons CO2e per year and no all-in source category (§ 98.2(a))."
+          "verdict": "check_with_ehs",
+          "why": "Below 25,000 metric tons CO2e per year, and this profile is not cement or lime. Other Table A-3 categories still report at any level (§ 98.2(a)(1)). This pack does not screen them, so the low number is not a skip."
         }
       ],
-      "unknown_why": "Annual GHG emissions (ghg_co2e_tpy, metric tons CO2e) are not given.",
+      "default": {
+        "verdict": "check_with_ehs",
+        "why": "Subpart C is not settled. The combustion-only path needs both 25,000 metric tons CO2e and at least 30 MMBtu/hr aggregate heat input (§ 98.2(a)(3)). A listed heat input below 30, or a missing one, is not enough to say the rule applies."
+      },
+      "unknown_why": "Subpart C needs the emissions, whether this is cement or lime, and the aggregate heat input. A missing fact is not treated as outside those categories.",
       "verified": true,
       "verify_phrases": [
         "25,000 metric tons CO2e",

@@ -14,8 +14,8 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from .citations import ecfr_url, label, norm_subpart, parse_citation
-from .client import Cached, Store, UsairError
-from .ecfr import Ecfr, current_hits
+from .client import Cached, Store, UsairError, build_url
+from .ecfr import HOST as ECFR_HOST, SEARCH_PAGE_CAP, SEARCH_PER_PAGE, TITLES_PATH, Ecfr, current_hits
 from .engine import run_pack
 from .fedreg import FedReg, normalize, resolve_since, resolve_types
 from .profiles import (
@@ -153,13 +153,15 @@ class Tools:
     # ------------------------------------------------------------- usair_cfr_get
     def cfr_get(self, args: Dict[str, Any]) -> Dict[str, Any]:
         citation = parse_citation(str(args.get("citation") or ""))
-        date = self.ecfr.resolve_date(args.get("date"))
+        date, title = self.ecfr.resolve_date(args.get("date"))
         max_chars = _int(args.get("max_chars"), 6000, 500, 30000)
         if citation.get("section"):
-            return self._cfr_section(citation, date, max_chars)
-        if citation.get("subpart"):
-            return self._cfr_subpart(citation, date, max_chars)
-        return self._cfr_part(citation, date)
+            payload, sources = self._cfr_section(citation, date, max_chars)
+        elif citation.get("subpart"):
+            payload, sources = self._cfr_subpart(citation, date, max_chars)
+        else:
+            payload, sources = self._cfr_part(citation, date)
+        return self._with_title(payload, sources, title, date)
 
     def _cfr_section(self, citation: Dict[str, Optional[str]], date: str, max_chars: int) -> Dict[str, Any]:
         cached = self.ecfr.full(date, citation["part"], section=citation["section"])
@@ -187,10 +189,10 @@ class Tools:
             payload["total_chars"] = cut["total_chars"]
         if cut["truncated"]:
             payload["next_step"] = "The section was cut. Call again with a larger max_chars (up to 30000)."
-        return self._finish(payload, [self._source(
+        return payload, [self._source(
             "eCFR (National Archives, Office of the Federal Register)", payload["ecfr_url"], cached,
             ecfr_date=date, official=False,
-            attribution="Editorial compilation from www.ecfr.gov. Not the official legal edition.")])
+            attribution="Editorial compilation from www.ecfr.gov. Not the official legal edition.")]
 
     def _cfr_subpart(self, citation: Dict[str, Optional[str]], date: str, max_chars: int) -> Dict[str, Any]:
         cached = self.ecfr.full(date, citation["part"], subpart=citation["subpart"])
@@ -216,11 +218,11 @@ class Tools:
         }
         if cut["truncated"]:
             payload["next_step"] = "Text was cut. Read one section with usair_cfr_get and its full citation."
-        return self._finish(payload, [self._source(
+        return payload, [self._source(
             "eCFR (National Archives, Office of the Federal Register)", payload["ecfr_url"], cached,
-            ecfr_date=date, official=False)])
+            ecfr_date=date, official=False)]
 
-    def _cfr_part(self, citation: Dict[str, Optional[str]], date: str) -> Dict[str, Any]:
+    def _cfr_part(self, citation: Dict[str, Optional[str]], date: str) -> tuple:
         cached = self.ecfr.structure(date, citation["part"])
         data = cached.data
         payload = {
@@ -232,9 +234,9 @@ class Tools:
             "ecfr_url": ecfr_url(citation, date),
             "next_step": "Ask for a subpart or a section to read the text. A whole part is not downloaded.",
         }
-        return self._finish(payload, [self._source(
+        return payload, [self._source(
             "eCFR (National Archives, Office of the Federal Register)", payload["ecfr_url"], cached,
-            ecfr_date=date, official=False)])
+            ecfr_date=date, official=False)]
 
     # ---------------------------------------------------------- usair_cfr_search
     def cfr_search(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -247,30 +249,33 @@ class Tools:
         if subpart and not part:
             raise UsairError("bad_argument", "A subpart needs a part number too.", "Pass part='63' with subpart='LLL'.")
         limit = _int(args.get("max_results"), 8, 1, 20)
-        date = self.ecfr.resolve_date(None)
-        cached = self.ecfr.search(query, part, subpart, per_page=min(20, max(limit * 3, limit)))
-        data = cached.data if isinstance(cached.data, dict) else {}
-        raw = data.get("results")
-        if not isinstance(raw, list):
-            raise UsairError("bad_response", "eCFR search returned no result list.", "Retry once.")
-        hits = current_hits(raw, date)[:limit]
-        total_current = len(current_hits(raw, date))
-        for hit in hits:
+        date, title = self.ecfr.resolve_date(None)
+        hits, pages, exhausted = self._search_current(query, part, subpart, date, limit)
+        shown = hits[:limit]
+        for hit in shown:
             ref = {"part": hit.get("part"), "subpart": None, "section": hit.get("section"), "paragraph": None}
             hit["citation"] = label(ref) if hit.get("section") else label({"part": hit.get("part"), "subpart": hit.get("subpart"), "section": None, "paragraph": None})
             hit["url"] = ecfr_url(ref, date) if hit.get("section") else ecfr_url(
                 {"part": hit.get("part"), "subpart": hit.get("subpart"), "section": None, "paragraph": None}, date)
         payload: Dict[str, Any] = {
             "query": query, "part": part, "subpart": subpart, "ecfr_date": date,
-            "total_current": total_current, "results": hits,
+            "total_current": len(hits), "results": shown,
+            "pages_fetched": len(pages), "search_complete": exhausted,
         }
-        if not hits:
+        if not shown and not exhausted:
+            payload["message"] = ("The search stopped before the result list was exhausted, so this is not "
+                                  "a finding that no current section matches.")
+        elif not shown:
             payload["message"] = "No current Title 40 section matched."
         else:
             payload["next_step"] = "Read one hit with usair_cfr_get before quoting it."
+            if not exhausted:
+                payload["search_note"] = ("Returned the current sections found within the page cap. "
+                                          "Later pages were not read.")
         scope = {"part": part or "40", "subpart": subpart, "section": None, "paragraph": None}
-        return self._finish(payload, [self._source(
-            "eCFR search (National Archives)", ecfr_url(scope, date), cached, ecfr_date=date)])
+        sources = [self._source("eCFR search (National Archives)", ecfr_url(scope, date), page, ecfr_date=date)
+                   for page in pages]
+        return self._with_title(payload, sources, title, date)
 
     # ----------------------------------------------------------- usair_fr_recent
     def fr_recent(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -309,8 +314,9 @@ class Tools:
         ran = run_pack(pack, {"facility": facility}, units, only)
         findings = [self._finding(item) for item in ran["evaluated"]]
         fr_notes: List[str] = []
+        fr_sources: List[Dict[str, Any]] = []
         if _flag(args.get("include_fr")):
-            fr_notes = self._attach_fr(findings)
+            fr_notes = self._attach_fr(findings, fr_sources)
         counts: Dict[str, int] = {}
         for f in findings:
             counts[f["verdict"]] = counts.get(f["verdict"], 0) + 1
@@ -331,10 +337,7 @@ class Tools:
         if fr_notes:
             payload["fr_notes"] = fr_notes
         sources = [self._pack_source(pack)]
-        if any(f.get("fr_recent") for f in findings):
-            sources.append({"name": "Federal Register (Office of the Federal Register, National Archives)",
-                            "url": "https://www.federalregister.gov/",
-                            "note": "Recent documents are attached on findings[].fr_recent. A proposed rule is not law."})
+        sources.extend(fr_sources)
         return self._finish(payload, sources)
 
     # --------------------------------------------------------- usair_home_check
@@ -387,22 +390,23 @@ class Tools:
             raise UsairError("bad_argument", "Give a topic.",
                              "Example: state='TX', topic='outdoor_burning'. Known: " + ", ".join(known_topics()) + ".")
         limit = _int(args.get("max_results"), 8, 1, 20)
-        date = self.ecfr.resolve_date(None)
+        date, title = self.ecfr.resolve_date(None)
         queries = queries_for(topic_key(topic) if topic_key(topic) in set(known_topics()) else topic)
-        cached: Optional[Cached] = None
         hits: List[Dict[str, Any]] = []
+        pages: List[Cached] = []
         used = queries[0]
+        exhausted = True
+        incomplete = False
         for query in queries:
-            cached = self.ecfr.search(query, part="52", subpart=sub, per_page=min(20, max(limit * 3, limit)))
-            data = cached.data if isinstance(cached.data, dict) else {}
-            raw = data.get("results")
-            if not isinstance(raw, list):
-                raise UsairError("bad_response", "eCFR search returned no result list.", "Retry once.")
-            hits = current_hits(raw, date)
+            hits, pages, exhausted = self._search_current(query, "52", sub, date, limit)
             used = query
             if hits:
                 break
-        for hit in hits:
+            if not exhausted:
+                incomplete = True
+                break
+        shown = hits[:limit]
+        for hit in shown:
             ref = {"part": "52", "subpart": None, "section": hit.get("section"), "paragraph": None}
             hit["citation"] = label(ref) if hit.get("section") else ""
             hit["url"] = ecfr_url(ref, date) if hit.get("section") else ""
@@ -414,17 +418,26 @@ class Tools:
             "query": used,
             "ecfr_date": date,
             "ecfr_url": ecfr_url(citation, date),
-            "results": hits[:limit],
+            "results": shown,
+            "pages_fetched": len(pages),
+            "search_complete": (bool(hits) and exhausted) or (not hits and not incomplete),
             "caveat": SIP_CAVEAT,
         }
-        if not hits:
+        if not shown and incomplete:
+            payload["search_complete"] = False
+            payload["message"] = (f"Search of part 52 subpart {sub} for {topic!r} stopped before the result list "
+                                  "was exhausted, so this is not a finding that no current text matches.")
+            payload["next_step"] = "Try a narrower query, or open the subpart URL. Do not treat this as no match."
+        elif not shown:
             payload["message"] = f"No current part 52 text in subpart {sub} matched {topic!r}."
             payload["next_step"] = "Try different words, or open the subpart URL. The rule may be state-only and not yet approved."
         else:
             payload["next_step"] = "Read one section with usair_cfr_get before quoting it. This is the EPA-approved text."
-        assert cached is not None
-        return self._finish(payload, [self._source(
-            "eCFR, 40 CFR part 52 (EPA-approved SIP)", payload["ecfr_url"], cached, ecfr_date=date)])
+            if not exhausted:
+                payload["search_note"] = "Returned the current sections found within the page cap. Later pages were not read."
+        sources = [self._source("eCFR, 40 CFR part 52 (EPA-approved SIP)", payload["ecfr_url"], page, ecfr_date=date)
+                   for page in pages]
+        return self._with_title(payload, sources, title, date)
 
     # ------------------------------------------------------------------- internals
     def _rule_filter(self, pack: Dict[str, Any], rules: List[str]) -> Optional[Set[str]]:
@@ -463,21 +476,25 @@ class Tools:
                 finding["why"] = _unit_why(item["units"])
         return finding
 
-    def _attach_fr(self, findings: List[Dict[str, Any]]) -> List[str]:
-        """Best-effort Federal Register context. A source failure is reported, not fatal:
-        the screening result still stands, and the note says the register was not checked."""
+    def _attach_fr(self, findings: List[Dict[str, Any]], sources: List[Dict[str, Any]]) -> List[str]:
+        """Best-effort Federal Register context. Each attempt counts toward the cap, including
+        failures, so an outage cannot walk every eligible finding. Source details, including an
+        empty or stale result, are kept on the finding and on the response."""
         cap = self._setting_int("fr_on_triage_max", 4, 0, 12)
         notes: List[str] = []
-        fetched = 0
+        attempts = 0
+        deferred = False
         pack = {e["id"]: e for e in load_pack("plant")["entries"]}
         for finding in findings:
-            if fetched >= cap:
-                break
             if finding["verdict"] not in ("applies", "check_with_ehs", "check"):
                 continue
             fr = (pack.get(finding["id"]) or {}).get("fr") or {}
             if not fr.get("part"):
                 continue
+            if attempts >= cap:
+                deferred = True
+                continue
+            attempts += 1
             try:
                 result = self.fr_recent({"part": fr["part"], "term": fr.get("term"), "since": "2y", "max_results": 3})
             except UsairError as err:
@@ -485,10 +502,60 @@ class Tools:
                 notes.append(f"{finding['id']}: Federal Register not checked ({err.kind}).")
                 continue
             finding["fr_recent"] = result.get("documents") or []
-            fetched += 1
-        if fetched == 0 and not notes:
+            finding["fr_source"] = result.get("source") or []
+            if result.get("message"):
+                finding["fr_message"] = result["message"]
+            if result.get("stale"):
+                finding["fr_stale"] = True
+            sources.extend(finding["fr_source"])
+        if deferred:
+            notes.append(f"Stopped after {cap} Federal Register attempt(s); later rules were not checked.")
+        elif attempts == 0 and not notes:
             notes.append("include_fr was set, but no matching rule had a Federal Register query within the cap.")
         return notes
+
+    def _search_current(self, query: str, part: Optional[str], subpart: Optional[str], date: str,
+                        limit: int) -> tuple:
+        """Page until `limit` current hits, the result list ends, or SEARCH_PAGE_CAP.
+
+        Returns (current_hits, page_caches, exhausted). An empty filtered page is not treated as
+        the end of the search.
+        """
+        raw_hits: List[Dict[str, Any]] = []
+        pages: List[Cached] = []
+        exhausted = False
+        for page_no in range(1, SEARCH_PAGE_CAP + 1):
+            cached = self.ecfr.search(query, part, subpart, per_page=SEARCH_PER_PAGE, page=page_no)
+            pages.append(cached)
+            data = cached.data if isinstance(cached.data, dict) else {}
+            raw = data.get("results")
+            if not isinstance(raw, list):
+                raise UsairError("bad_response", "eCFR search returned no result list.", "Retry once.")
+            raw_hits.extend(raw)
+            meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+            try:
+                last_page = meta.get("total_pages") is not None and page_no >= int(meta["total_pages"])
+            except (TypeError, ValueError):
+                last_page = False
+            if last_page or len(raw) < SEARCH_PER_PAGE:
+                exhausted = True
+                break
+            if len(current_hits(raw_hits, date)) >= limit:
+                break
+        else:
+            exhausted = False
+        return current_hits(raw_hits, date), pages, exhausted
+
+    def _with_title(self, payload: Dict[str, Any], sources: List[Dict[str, Any]],
+                    title: Optional[Cached], date: str) -> Dict[str, Any]:
+        if title is not None:
+            sources = list(sources) + [self._source(
+                "eCFR Title 40 currency date",
+                build_url(ECFR_HOST, TITLES_PATH),
+                title,
+                ecfr_date=date,
+            )]
+        return self._finish(payload, sources)
 
     @staticmethod
     def _pack_source(pack: Dict[str, Any]) -> Dict[str, Any]:

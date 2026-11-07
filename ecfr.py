@@ -10,7 +10,7 @@ from __future__ import annotations
 import html
 import re
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .client import Cached, Store, UsairError, build_url, parse_json
 
@@ -21,6 +21,8 @@ SEARCH_PATH = "/api/search/v1/results"
 STRUCTURE_PATH = "/api/versioner/v1/structure/{date}/title-40.json"
 TITLES_TTL_S = 6 * 3600
 SEARCH_TTL_S = 24 * 3600
+SEARCH_PER_PAGE = 20
+SEARCH_PAGE_CAP = 5
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _BLOCKS = {"P", "FP", "HD1", "HD2", "HD3", "NOTE", "EXTRACT", "CITA", "AUTH", "SOURCE", "EDNOTE", "FTNT", "SECAUTH"}
@@ -102,17 +104,22 @@ class Ecfr:
 
         return self.store.fetch("ecfr-titles", url, parse, ttl_s=TITLES_TTL_S)
 
-    def resolve_date(self, date: Optional[str]) -> str:
+    def resolve_date(self, date: Optional[str]) -> Tuple[str, Optional[Cached]]:
+        """Return (YYYY-MM-DD, title-currency cache). The cache is None when the caller pinned a date.
+
+        A stale title-currency response is returned, not dropped: the caller must surface it.
+        Section text pinned to that date would otherwise look freshly cached forever.
+        """
         if date:
             date = str(date).strip()
             if not _DATE.match(date):
                 raise UsairError("bad_argument", f"'{date}' is not a date.", "Use YYYY-MM-DD, or leave date out for current text.")
-            return date
-        status = self.title40_status().data
-        current = status.get("up_to_date_as_of") or status.get("latest_issue_date")
+            return date, None
+        status = self.title40_status()
+        current = status.data.get("up_to_date_as_of") or status.data.get("latest_issue_date")
         if not current:
             raise UsairError("bad_response", "eCFR did not report a current date for Title 40.")
-        return current
+        return str(current), status
 
     def full(self, date: str, part: str, subpart: Optional[str] = None, section: Optional[str] = None) -> Cached:
         params: List[tuple] = [("part", part)]
@@ -130,14 +137,19 @@ class Ecfr:
                                 lambda body: parse_structure(parse_json(body), part), ttl_s=-1)
 
     def search(self, query: str, part: Optional[str] = None, subpart: Optional[str] = None,
-               per_page: int = 20, date: Optional[str] = None) -> Cached:
-        params: List[tuple] = [("query", query), ("hierarchy[title]", "40"), ("per_page", str(per_page))]
+               per_page: int = SEARCH_PER_PAGE, page: int = 1) -> Cached:
+        per_page = max(1, min(SEARCH_PER_PAGE, int(per_page)))
+        page = max(1, int(page))
+        params: List[tuple] = [
+            ("query", query), ("hierarchy[title]", "40"),
+            ("per_page", str(per_page)), ("page", str(page)),
+        ]
         if part:
             params.append(("hierarchy[part]", part))
         if subpart:
             params.append(("hierarchy[subpart]", subpart))
         url = build_url(HOST, SEARCH_PATH, params)
-        key = f"ecfr-search-{query}-{part or ''}-{subpart or ''}-{per_page}"
+        key = f"ecfr-search-{query}-{part or ''}-{subpart or ''}-{per_page}-p{page}"
         return self.store.fetch(key, url, parse_json, ttl_s=SEARCH_TTL_S)
 
 

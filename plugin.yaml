@@ -25,5 +25,5 @@ config_schema:
   fr_on_triage_max:
     type: int
     default: 4
-    label: "Federal Register lookups per triage"
-    description: "When include_fr is set, at most this many Federal Register queries are added to a plant triage."
+    label: "Federal Register attempts per triage"
+    description: "When include_fr is set, at most this many Federal Register requests are attempted during one plant triage. A failed request counts."

@@ -78,8 +78,8 @@ Success is JSON with `ok: true`, a `source` list, and `disclaimer`. Failure is `
 - Stationary engines: NESHAP ZZZZ for any stationary RICE; NSPS IIII and JJJJ by order date and manufacture date.
 - Boilers: NESHAP DDDDD at major sources, JJJJJJ at area sources (gas-fired boilers excluded), NSPS Db above 100 MMBtu/hr, Dc from 10 to 100.
 - Lime: NESHAP AAAAA at major sources, NSPS HH for rotary kilns after 3 May 1977.
-- GHG reporting: cement (subpart H) and lime (subpart S) report regardless of amount; other combustion reports at 25,000 metric tons CO2e.
-- Wood heaters: subpart AAA (stoves) and QQQQ (hydronic heaters and furnaces) from 15 May 2015, including the person who installs or operates one.
+- GHG reporting: cement (subpart H) and lime (subpart S) report regardless of amount (§ 98.2(a)(1)). The combustion-only path needs both 25,000 metric tons CO2e and an aggregate heat input of at least 30 MMBtu/hr (§ 98.2(a)(3)). A missing category or heat input is check with EHS. Below 25,000 is not a skip: other Table A-3 categories are outside this pack.
+- Wood heaters: subpart AAA applies to heaters manufactured or sold on or after 15 May 2015 (§ 60.530(a)(2)), and to EPA-certified heaters manufactured on or after 1 July 1988 and before that date (§ 60.530(a)(1)). A certificate with no manufacture date stays check. Subpart QQQQ covers hydronic heaters and forced-air furnaces from 15 May 2015.
 - Autobody and spray coating: subpart HHHHHH. Coating your own vehicles, at most two a year, without pay, is the hobby exclusion.
 - Paint in a can: part 59 binds the manufacturer or importer, not the person painting. The verdict is `product_rule`.
 
@@ -101,12 +101,12 @@ Under `plugins.entries.us-air-rules.settings` in `config.yaml`:
 | Key | Default | Meaning |
 |---|---|---|
 | `cache_max_mb` | `100` | Drop the oldest cached responses past this size. |
-| `fr_on_triage_max` | `4` | How many Federal Register queries one `include_fr` triage may add. |
+| `fr_on_triage_max` | `4` | How many Federal Register requests one `include_fr` triage may attempt. A failed request counts. |
 
 ## Development
 
 ```bash
-python -m unittest discover -s tests -v          # 42 offline tests, no network
+python -m unittest discover -s tests -v          # 51 offline tests, no network
 python scripts/verify_packs.py                   # live eCFR phrase check; add --mark to rewrite verified flags
 hermes plugins validate .                        # the check the catalog runs
 ```

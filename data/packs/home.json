@@ -164,20 +164,34 @@
         },
         {
           "when": {
-            "field": "home.wood_heater.manufacture_date",
-            "op": "on_or_after",
-            "value": "2015-05-15"
+            "any": [
+              {
+                "field": "home.wood_heater.manufacture_date",
+                "op": "on_or_after",
+                "value": "2015-05-15"
+              },
+              {
+                "all": [
+                  {
+                    "field": "home.wood_heater.manufacture_date",
+                    "op": "on_or_after",
+                    "value": "1988-07-01"
+                  },
+                  {
+                    "field": "home.wood_heater.manufacture_date",
+                    "op": "before",
+                    "value": "2015-05-15"
+                  },
+                  {
+                    "field": "home.wood_heater.epa_certified",
+                    "op": "is_true"
+                  }
+                ]
+              }
+            ]
           },
           "verdict": "applies",
-          "why": "Made on or after May 15, 2015, so it is an affected wood heater (§ 60.530(a)(2)): burn only allowed fuels (§ 60.532(f)) and operate it as the manual says (§ 60.532(g))."
-        },
-        {
-          "when": {
-            "field": "home.wood_heater.epa_certified",
-            "op": "is_true"
-          },
-          "verdict": "applies",
-          "why": "An EPA-certified heater is an affected wood heater (§ 60.530(a)(1)-(2)): burn only allowed fuels (§ 60.532(f)) and operate it as the manual says (§ 60.532(g))."
+          "why": "Affected under § 60.530(a)(2) when manufactured or sold on or after May 15, 2015, or under § 60.530(a)(1) when manufactured on or after July 1, 1988 and before that date and reported as EPA-certified. A certificate with no manufacture date is not enough: (a)(1) still needs the date. Burn only allowed fuels (§ 60.532(f)) and operate it as the manual says (§ 60.532(g))."
         },
         {
           "when": {

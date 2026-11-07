@@ -75,9 +75,19 @@ _DATE_RX = re.compile(r"^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?$")
 
 
 def date_range(value: Any) -> Optional[Tuple[_dt.date, _dt.date]]:
-    """'2006' -> (2006-01-01, 2006-12-31); '2006-04' -> April; full dates -> (d, d)."""
+    """'2006' -> (2006-01-01, 2006-12-31); '2006-04' -> April; full dates -> (d, d).
+
+    A dict {"start", "end"} is an explicit bound, used when the latest known event is not a
+    single calendar day, month, or year.
+    """
     if isinstance(value, _dt.date):
         return value, value
+    if isinstance(value, dict) and "start" in value and "end" in value:
+        lo = date_range(value.get("start"))
+        hi = date_range(value.get("end"))
+        if lo is None or hi is None or hi[1] < lo[0]:
+            return None
+        return lo[0], hi[1]
     if is_unknown(value):
         return None
     m = _DATE_RX.match(str(value).strip())
@@ -252,38 +262,77 @@ def worst(verdicts: Iterable[str], order: List[str]) -> str:
     return min(vs, key=lambda v: rank.get(v, -1)) if vs else order[-1]
 
 
+def _result_refs(node: Any) -> Set[str]:
+    """Ids read as results.<id> anywhere in an entry's conditions."""
+    found: Set[str] = set()
+    if isinstance(node, dict):
+        field = node.get("field")
+        if isinstance(field, str) and field.startswith("results."):
+            found.add(field.split(".", 1)[1])
+        for value in node.values():
+            found |= _result_refs(value)
+    elif isinstance(node, list):
+        for value in node:
+            found |= _result_refs(value)
+    return found
+
+
+def entries_to_evaluate(entries: List[Dict[str, Any]], only: Optional[Set[str]]) -> Optional[Set[str]]:
+    """Ids that must run so filtered rows still see earlier verdicts. None means every entry."""
+    if only is None:
+        return None
+    by_id = {entry["id"]: entry for entry in entries}
+    needed = {eid for eid in only if eid in by_id}
+    changed = True
+    while changed:
+        changed = False
+        for eid in list(needed):
+            for dep in _result_refs(by_id[eid]):
+                if dep in by_id and dep not in needed:
+                    needed.add(dep)
+                    changed = True
+    return needed
+
+
 def run_pack(pack: Dict[str, Any], ctx_base: Dict[str, Any], units: List[Dict[str, Any]],
              only: Optional[Set[str]] = None) -> Dict[str, Any]:
-    """Evaluate every entry. Unit-scoped entries run once per matching unit; the entry's verdict
-    is the highest-priority unit verdict. Later entries can read earlier verdicts as results.<id>."""
+    """Evaluate every entry the answer depends on. Unit-scoped entries run once per matching unit;
+    the entry's verdict is the highest-priority unit verdict. Later entries can read earlier
+    verdicts as results.<id>. A filter limits the rows returned, not the earlier entries those
+    rows read: a missing result must not stop a later rule before a known fact is checked."""
     order: List[str] = pack["verdicts"]
     fallback: str = pack["fallback_verdict"]
+    needed = entries_to_evaluate(pack["entries"], only)
     results: Dict[str, str] = {}
     evaluated: List[Dict[str, Any]] = []
     not_relevant: List[str] = []
     for entry in pack["entries"]:
         eid = entry["id"]
-        if only and eid not in only:
+        if needed is not None and eid not in needed:
             continue
+        visible = only is None or eid in only
         ctx = dict(ctx_base, results=results)
         rel = entry.get("relevant_if")
         rel_r, rel_missing = evaluate(rel, ctx) if rel else (True, set())
         if rel_r is False:
-            not_relevant.append(eid)
             results[eid] = "not_relevant"
+            if visible:
+                not_relevant.append(eid)
             continue
         if rel_r is None:
             out = {"verdict": fallback, "why": entry.get("relevance_unknown_why")
                    or "Could not tell whether this source category is present.", "missing": sorted(rel_missing)}
             results[eid] = fallback
-            evaluated.append({"entry": entry, **out, "units": []})
+            if visible:
+                evaluated.append({"entry": entry, **out, "units": []})
             continue
         if entry.get("scope") == "unit":
             types = set(entry.get("unit_types") or [])
             matching = [u for u in units if u.get("type") in types]
             if not matching:
-                not_relevant.append(eid)
                 results[eid] = "not_relevant"
+                if visible:
+                    not_relevant.append(eid)
                 continue
             unit_results = []
             for u in matching:
@@ -292,12 +341,14 @@ def run_pack(pack: Dict[str, Any], ctx_base: Dict[str, Any], units: List[Dict[st
             verdict = worst((r["verdict"] for r in unit_results), order)
             missing = sorted({m for r in unit_results for m in r["missing"]})
             results[eid] = verdict
-            evaluated.append({"entry": entry, "verdict": verdict, "why": "", "missing": missing,
-                              "units": unit_results})
+            if visible:
+                evaluated.append({"entry": entry, "verdict": verdict, "why": "", "missing": missing,
+                                  "units": unit_results})
         else:
             r = evaluate_rules(entry, ctx, fallback)
             results[eid] = r["verdict"]
-            evaluated.append({"entry": entry, **r, "units": []})
+            if visible:
+                evaluated.append({"entry": entry, **r, "units": []})
     rank = {v: i for i, v in enumerate(order)}
     evaluated.sort(key=lambda e: rank.get(e["verdict"], len(order)))
     return {"evaluated": evaluated, "not_relevant": not_relevant, "results": results}

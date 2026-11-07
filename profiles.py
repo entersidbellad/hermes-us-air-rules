@@ -8,6 +8,7 @@ invents a fact: if the inputs are missing, the derived field stays missing and t
 from __future__ import annotations
 
 import copy
+import datetime as _dt
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -62,13 +63,32 @@ def _fuels(raw: Any) -> List[str]:
     return [_key(f) for f in items if not is_unknown(f)]
 
 
-def _latest_date(*values: Any) -> Optional[str]:
-    best = None
-    for v in values:
-        rng = date_range(v)
-        if rng and (best is None or rng[1] > best[1]):
-            best = (str(v).strip(), rng[1])
-    return best[0] if best else None
+def _format_span(lo: _dt.date, hi: _dt.date) -> Any:
+    """Collapse a bound to YYYY, YYYY-MM, or YYYY-MM-DD when that string means the same range."""
+    if lo == hi:
+        return lo.isoformat()
+    if (lo.year == hi.year and lo.month == 1 and lo.day == 1 and hi.month == 12 and hi.day == 31):
+        return f"{lo.year:04d}"
+    if lo.year == hi.year and lo.month == hi.month and lo.day == 1:
+        last = (_dt.date(lo.year + (lo.month == 12), lo.month % 12 + 1, 1) - _dt.timedelta(days=1))
+        if hi == last:
+            return f"{lo.year:04d}-{lo.month:02d}"
+    return {"start": lo.isoformat(), "end": hi.isoformat()}
+
+
+def _latest_date(*values: Any) -> Any:
+    """Latest known construction, modification, or reconstruction, keeping partial-date bounds.
+
+    The lower bound is the latest start among known events, and the upper bound is the latest
+    end. A known modification on 1971-09-01 is not hidden by a construction year of 1971, and a
+    modification date is kept when construction was never reported.
+    """
+    ranges = [rng for rng in (date_range(v) for v in values) if rng]
+    if not ranges:
+        return None
+    lo = max(start for start, _end in ranges)
+    hi = max(end for _start, end in ranges)
+    return _format_span(lo, hi)
 
 
 # ------------------------------------------------------------------ plant
@@ -135,8 +155,9 @@ def normalize_plant(profile: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[
                 u[flag] = as_bool(u[flag])
         if u.get("modified_or_reconstructed") is None and (u.get("modified_date") or u.get("reconstructed_date")):
             u["modified_or_reconstructed"] = True
-        if not is_unknown(u.get("construction_date")):
-            u["nsps_date"] = _latest_date(u.get("construction_date"), u.get("modified_date"), u.get("reconstructed_date"))
+        nsps = _latest_date(u.get("construction_date"), u.get("modified_date"), u.get("reconstructed_date"))
+        if nsps is not None:
+            u["nsps_date"] = nsps
         if t == "kiln":
             for flag in ("burns_hazardous_waste", "burns_solid_waste"):
                 u[flag] = as_bool(u[flag]) if flag in u else fac.get(flag)
@@ -154,10 +175,51 @@ def normalize_plant(profile: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[
         for u in units:
             if u["type"] == "kiln" and is_unknown(u.get("product")):
                 u["product"] = "cement"
-    handles_coal = any(u["type"] == "coal_mill" or {"coal", "petcoke", "pet_coke"} & set(u["fuel"]) for u in units)
-    fac["handles_coal"] = True if handles_coal else (False if units else None)
-    fac["ghg_all_in_category"] = True if (fac["is_cement_plant"] or fac["is_lime_plant"]) else None
+    # A unit list that never mentions coal does not prove the plant handles none. Reported
+    # throughput is evidence either way, including zero. Unknown stays unknown so subpart Y
+    # cannot disappear before the 200 ton/day test.
+    coal_units = any(
+        u["type"] == "coal_mill" or {"coal", "petcoke", "pet_coke"} & set(u.get("fuel") or []) for u in units)
+    if coal_units or as_number(fac.get("coal_processed_tpd")) is not None:
+        fac["handles_coal"] = True
+    else:
+        fac["handles_coal"] = None
+    cement = fac["is_cement_plant"]
+    lime = fac["is_lime_plant"]
+    if cement is True or lime is True:
+        fac["ghg_all_in_category"] = True
+    elif cement is False and lime is False:
+        fac["ghg_all_in_category"] = False
+    else:
+        fac["ghg_all_in_category"] = None
+    fac["combustion_heat_at_least_30"] = _combustion_heat_at_least_30(units)
     return fac, units, warnings
+
+
+# Boilers, process heaters, engines, and kilns are the stationary fuel combustion units this pack
+# can see. Horsepower is not converted to MMBtu/hr. A known sum of at least 30 is enough, because
+# unlisted capacity cannot make the aggregate smaller. A sum below 30 is False only when every
+# listed combustion unit reported a heat input. Otherwise the aggregate stays unknown.
+_COMBUSTION_TYPES = {"boiler", "process_heater", "stationary_rice", "kiln"}
+
+
+def _combustion_heat_at_least_30(units: List[Dict[str, Any]]) -> Optional[bool]:
+    combustion = [u for u in units if u.get("type") in _COMBUSTION_TYPES]
+    if not combustion:
+        return None
+    known: List[float] = []
+    missing = False
+    for unit in combustion:
+        rate = as_number(unit.get("mmbtu_hr"))
+        if rate is None:
+            missing = True
+        else:
+            known.append(rate)
+    if sum(known) >= 30:
+        return True
+    if missing:
+        return None
+    return False
 
 
 def _category(naics: List[str], code: str, product: str, products: List[str], raw_products: List[Any]) -> Optional[bool]:
