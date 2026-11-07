@@ -1,0 +1,31 @@
+{
+  "layer": "home",
+  "how_to_use": "Copy profile, keep the sections that matter to you, leave unknowns null. Pass it as usair_home_check(profile=...).",
+  "profile": {
+    "role": "homeowner",
+    "state": "PA",
+    "topics": ["outdoor_burning", "idling", "wood_heating", "paint_solvent", "spray_coating"],
+    "burning": {"what": ["yard_waste"]},
+    "wood_heater": {"kind": "wood_stove", "buying_new": null, "manufacture_date": null, "epa_certified": null},
+    "coatings": {"spray_applies": null, "substrates": [], "vehicles_per_year": null, "for_compensation": null,
+                 "target_hap": null, "paint_stripping_methylene_chloride": null},
+    "makes_or_imports_coatings": false
+  },
+  "fields": {
+    "role": "homeowner or small_shop.",
+    "state": "Two-letter code; used for the SIP lookup.",
+    "topics": "Any of outdoor_burning, idling, wood_heating, paint_solvent, spray_coating. Left out: taken from the sections you fill in.",
+    "burning.what": "yard_waste, leaves, brush, trash, plastic, tires, treated_wood, pallets, commercial_waste, ...",
+    "wood_heater.kind": "wood_stove, pellet_stove, fireplace, masonry_heater, hydronic_heater (outdoor wood boiler), forced_air_furnace.",
+    "wood_heater.buying_new": "true if you are buying or installing a new unit.",
+    "wood_heater.manufacture_date": "From the label, YYYY or YYYY-MM-DD.",
+    "wood_heater.epa_certified": "true if the label shows an EPA certificate.",
+    "coatings.spray_applies": "true if you spray paint or other coatings (not brush/roller).",
+    "coatings.substrates": "motor_vehicles, mobile_equipment, metal_parts, plastic_parts, wood, ...",
+    "coatings.vehicles_per_year": "How many motor vehicles or pieces of mobile equipment you spray-coat per year.",
+    "coatings.for_compensation": "true if you are paid for the work.",
+    "coatings.target_hap": "true if the coatings contain chromium, lead, manganese, nickel or cadmium (see the SDS).",
+    "coatings.paint_stripping_methylene_chloride": "true if you use a methylene chloride paint stripper.",
+    "makes_or_imports_coatings": "true if your business makes, imports or private-labels paints, solvents or spray cans."
+  }
+}

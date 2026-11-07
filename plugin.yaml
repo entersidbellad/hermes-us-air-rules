@@ -1,0 +1,29 @@
+name: us-air-rules
+version: 0.1.0
+manifest_version: 2
+api_version: 1
+requires_hermes: ">=0.22.2"
+description: "Does this EPA air rule apply to me? Screen a plant or a household against Title 40 of the CFR (eCFR) and recent Federal Register actions. Applicability triage with citations, not a compliance determination. No API key."
+author: entersidbellad
+license: MIT
+homepage: https://github.com/entersidbellad/hermes-us-air-rules
+tags: [epa, air, cfr, ecfr, federal-register, environment, compliance, government-data]
+provides_tools:
+  - usair_cfr_get
+  - usair_cfr_search
+  - usair_fr_recent
+  - usair_plant_triage
+  - usair_home_check
+  - usair_sip_lookup
+provides_hooks: []
+config_schema:
+  cache_max_mb:
+    type: int
+    default: 100
+    label: "Cache size limit (MB)"
+    description: "Oldest cached eCFR and Federal Register responses are deleted past this size."
+  fr_on_triage_max:
+    type: int
+    default: 4
+    label: "Federal Register lookups per triage"
+    description: "When include_fr is set, at most this many Federal Register queries are added to a plant triage."

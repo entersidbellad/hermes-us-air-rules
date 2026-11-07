@@ -1,0 +1,24 @@
+{
+  "layer": "plant",
+  "fictional": true,
+  "note": "Fictional plant for demos and tests. Every name, date and number is invented.",
+  "profile": {
+    "name": "Copper Hollow Lime Co. (fictional)",
+    "state": "PA",
+    "naics": "327410",
+    "hap_status": "area",
+    "criteria_pte_major": true,
+    "uses_control_devices": true,
+    "ghg_co2e_tpy": 310000,
+    "coal_processed_tpd": 120,
+    "units": [
+      {"id": "LK1", "type": "lime_kiln", "kiln_type": "rotary", "fuel": ["coal"], "construction_date": "1975-09-01",
+       "modified_or_reconstructed": false},
+      {"id": "LK2", "type": "lime_kiln", "kiln_type": "rotary", "fuel": ["coal", "natural_gas"], "construction_date": "2001-05-01"},
+      {"id": "CR1", "type": "crusher", "construction_date": "1999-01-01"},
+      {"id": "B1", "type": "boiler", "fuel": "fuel_oil", "mmbtu_hr": 4, "construction_date": "1990-01-01"},
+      {"id": "EG1", "type": "generator", "fuel": "natural_gas", "hp": 150, "use": "emergency",
+       "manufacture_date": "2015-08-01", "order_date": "2015-03-01"}
+    ]
+  }
+}
