@@ -52,7 +52,7 @@ A missing fact never becomes `skip`. The engine uses three-valued logic: yes, no
 
 `include_fr: true` on a plant triage attaches recent Federal Register documents to the rows that apply or need a check. The screening result still stands if the Register is down; the row says the Register was not checked. `usair_plant_compare` does not take `include_fr` and does not fetch.
 
-`/usair demo compare` screens `cement_plant_demo` against `cement_ciswi_after`. Those two fictional profiles differ by one field, `burns_solid_waste` (`unknown` to `false`). CISWI subparts CCCC/DDDD (`60-CCCC`) moves from `check_with_ehs` to `skip` because the kiln does not combust solid waste. The other 19 pack rows stay put. The citation in that result is the bundled pack, not a live eCFR read. `/usair compare <before_fixture> <after_fixture>` does the same for any two plant fixtures. Every unit needs a unique string id; a duplicate or a missing id is an error, not a guess.
+`/usair demo compare` screens `cement_plant_demo` against `cement_ciswi_after`. Those two fictional profiles differ by one field, `burns_solid_waste` (`unknown` to `false`). CISWI subparts CCCC/DDDD (`60-CCCC`) moves from `check_with_ehs` to `skip` because the kiln does not combust solid waste. The other 19 pack rows stay put. The citation in that result is the bundled pack, not a live eCFR read. `/usair compare <before_fixture> <after_fixture>` does the same for any two plant fixtures. A fixture is used only when that side's profile field is omitted. Null, blank, or `{}` is an error and does not load the fixture. Every unit needs a unique string id; a duplicate or a missing id is an error, not a guess.
 
 ### Try it
 
@@ -110,7 +110,7 @@ Under `plugins.entries.us-air-rules.settings` in `config.yaml`:
 ## Development
 
 ```bash
-python -m unittest discover -s tests -v          # 62 offline tests, no network
+python -m unittest discover -s tests -v          # 63 offline tests, no network
 python scripts/verify_packs.py                   # live eCFR phrase check; add --mark to rewrite verified flags
 hermes plugins validate .                        # the check the catalog runs
 ```

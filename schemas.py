@@ -124,10 +124,22 @@ PLANT_COMPARE = {
     "parameters": {
         "type": "object",
         "properties": {
-            "before_profile": {"type": "object", "description": "Plant profile before the change. See /usair template plant."},
-            "before_fixture": {"type": "string", "description": "Fictional plant fixture, used when before_profile is omitted."},
-            "after_profile": {"type": "object", "description": "Plant profile after the change."},
-            "after_fixture": {"type": "string", "description": "Fictional plant fixture, used when after_profile is omitted."},
+            "before_profile": {
+                "type": "object",
+                "description": "Plant profile before the change. Omit this field to use before_fixture. Null, blank, or {} is an error and does not select the fixture.",
+            },
+            "before_fixture": {
+                "type": "string",
+                "description": "Fictional plant fixture, used only when before_profile is omitted.",
+            },
+            "after_profile": {
+                "type": "object",
+                "description": "Plant profile after the change. Omit this field to use after_fixture. Null, blank, or {} is an error and does not select the fixture.",
+            },
+            "after_fixture": {
+                "type": "string",
+                "description": "Fictional plant fixture, used only when after_profile is omitted.",
+            },
             "rules": {
                 "type": "array", "items": {"type": "string"},
                 "description": "Optional pack entry ids to compare, e.g. ['60-CCCC']. Default: every plant rule.",

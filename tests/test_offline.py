@@ -1149,6 +1149,55 @@ class PlantCompare(unittest.TestCase):
         self.assertTrue(any("before_fixture was ignored" in warning for warning in out["warnings"]))
         self.assertTrue(any("after_fixture was ignored" in warning for warning in out["warnings"]))
 
+    def test_empty_profile_does_not_select_a_fixture(self):
+        def err(args):
+            parsed = json.loads(self.handlers["usair_plant_compare"](args))
+            self.assertFalse(parsed["ok"])
+            self.assertEqual(parsed["error_type"], "bad_argument")
+            self.assertEqual(self.tools.store.http.requests, 0)
+            self.assertNotIn("Mesa Gris", json.dumps(parsed))
+            return parsed
+
+        other = {"after_fixture": "cement_ciswi_after"}
+        for profile in ({}, None, "", "   ", [], "{}", "null", 0, False):
+            parsed = err(dict(other, before_profile=profile, before_fixture="cement_plant_demo"))
+            self.assertIn("before_profile", parsed["error"])
+            self.assertNotIn("cement_plant_demo", parsed["error"])
+        parsed = err(dict(other, before_profile={}))
+        self.assertIn("before_profile is empty", parsed["error"])
+
+        other = {"before_fixture": "cement_plant_demo"}
+        for profile in ({}, None, "", "   ", [], "{}", "null", 0, False):
+            parsed = err(dict(other, after_profile=profile, after_fixture="cement_ciswi_after"))
+            self.assertIn("after_profile", parsed["error"])
+            self.assertNotIn("cement_ciswi_after", parsed["error"])
+        parsed = err({"before_fixture": "cement_plant_demo", "after_profile": None})
+        self.assertIn("after_profile is null", parsed["error"])
+
+        parsed = err({"before_fixture": None, "after_fixture": "cement_ciswi_after"})
+        self.assertIn("before_fixture is empty", parsed["error"])
+        parsed = err({"before_fixture": "   ", "after_fixture": "cement_ciswi_after"})
+        self.assertIn("before_fixture is empty", parsed["error"])
+        parsed = err({"before_fixture": "cement_plant_demo", "after_fixture": ""})
+        self.assertIn("after_fixture is empty", parsed["error"])
+        parsed = err({"before_fixture": 5, "after_fixture": "cement_ciswi_after"})
+        self.assertIn("before_fixture must be a fixture name", parsed["error"])
+        parsed = err({"before_profile": "{", "after_fixture": "cement_ciswi_after"})
+        self.assertIn("not valid JSON", parsed["error"])
+
+        supplied = json.dumps({
+            "name": "String profile (fictional)", "naics": "327310",
+            "units": [{"id": "K1", "type": "kiln", "product": "cement", "burns_solid_waste": False}],
+        })
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": supplied,
+            "before_fixture": "cement_plant_demo",
+            "after_fixture": "cement_ciswi_after",
+        }))
+        self.assertEqual(out["before"]["name"], "String profile (fictional)")
+        self.assertIsNone(out["before"]["fixture"])
+        self.assertTrue(any("before_fixture was ignored" in warning for warning in out["warnings"]))
+
 
 if __name__ == "__main__":
     unittest.main()

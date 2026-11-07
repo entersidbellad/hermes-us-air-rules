@@ -390,11 +390,38 @@ class Tools:
         return finished
 
     def _compare_side(self, args: Dict[str, Any], side: str, warnings: List[str]) -> tuple:
-        profile = args.get(f"{side}_profile")
-        fixture = args.get(f"{side}_fixture")
-        if profile and fixture:
-            warnings.append(f"{side}_profile was used; {side}_fixture was ignored.")
-        return resolve_profile({"profile": profile, "fixture": fixture}, "plant")
+        """Use a fixture only when that side's profile field was omitted.
+
+        An explicit null, blank, empty object, or other invalid profile is an error.
+        It does not fall through to the fixture.
+        """
+        profile_key = f"{side}_profile"
+        fixture_key = f"{side}_fixture"
+        if profile_key in args:
+            if _fixture_name(args.get(fixture_key)):
+                warnings.append(f"{side}_profile was used; {side}_fixture was ignored.")
+            return _compare_profile(args[profile_key], side), None
+        if fixture_key not in args:
+            raise UsairError(
+                "bad_argument",
+                f"Pass {side}_profile or {side}_fixture.",
+                "Demo: before_fixture='cement_plant_demo', after_fixture='cement_ciswi_after'. "
+                "Omit the profile field to use a fixture.",
+            )
+        fixture = args.get(fixture_key)
+        if fixture is None or (isinstance(fixture, str) and not fixture.strip()):
+            raise UsairError(
+                "bad_argument",
+                f"{side}_fixture is empty.",
+                f"Pass a fixture name, or a {side}_profile object. An empty name does not select a demo.",
+            )
+        if not isinstance(fixture, str):
+            raise UsairError(
+                "bad_argument",
+                f"{side}_fixture must be a fixture name.",
+                "Example: 'cement_plant_demo'.",
+            )
+        return resolve_profile({"fixture": fixture}, "plant")
 
     # --------------------------------------------------------- usair_home_check
     def home_check(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -753,6 +780,51 @@ def _render(result: Dict[str, Any]) -> str:
     lines.append("")
     lines.append(result.get("disclaimer") or DISCLAIMER)
     return "\n".join(lines)
+
+
+def _fixture_name(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _compare_profile(profile: Any, side: str) -> Dict[str, Any]:
+    """Require a real profile object. Empty and null stay empty; they do not mean 'use the fixture'."""
+    if isinstance(profile, str):
+        if not profile.strip():
+            raise UsairError(
+                "bad_argument",
+                f"{side}_profile is empty.",
+                f"Omit {side}_profile to use {side}_fixture, or pass a profile object. "
+                "An empty profile does not select the fixture.",
+            )
+        try:
+            profile = json.loads(profile)
+        except ValueError as err:
+            raise UsairError(
+                "bad_argument",
+                f"{side}_profile is not valid JSON: {err}",
+                "Pass a profile object.",
+            ) from err
+    if profile is None:
+        raise UsairError(
+            "bad_argument",
+            f"{side}_profile is null.",
+            f"Omit {side}_profile to use {side}_fixture, or pass a profile object. "
+            "Null does not select the fixture.",
+        )
+    if isinstance(profile, dict):
+        if not profile:
+            raise UsairError(
+                "bad_argument",
+                f"{side}_profile is empty.",
+                f"Omit {side}_profile to use {side}_fixture, or pass the plant fields. "
+                "An empty object does not select the fixture.",
+            )
+        return profile
+    raise UsairError(
+        "bad_argument",
+        f"{side}_profile must be a JSON object.",
+        f"Omit {side}_profile to use {side}_fixture. Got {type(profile).__name__}.",
+    )
 
 
 def _compare_text(tools: Tools, args: Dict[str, Any]) -> str:
