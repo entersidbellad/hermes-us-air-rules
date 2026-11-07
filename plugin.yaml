@@ -1,9 +1,9 @@
 name: us-air-rules
-version: 0.1.0
+version: 0.2.0
 manifest_version: 2
 api_version: 1
 requires_hermes: ">=0.22.2"
-description: "Does this EPA air rule apply to me? Screen a plant or a household against Title 40 of the CFR (eCFR) and recent Federal Register actions. Applicability triage with citations, not a compliance determination. No API key."
+description: "Does this EPA air rule apply to me? Screen a plant or a household against Title 40 of the CFR (eCFR) and recent Federal Register actions, and compare two plant scenarios with the same bundled pack. Applicability triage with citations, not a compliance determination. No API key."
 author: entersidbellad
 license: MIT
 homepage: https://github.com/entersidbellad/hermes-us-air-rules
@@ -13,6 +13,7 @@ provides_tools:
   - usair_cfr_search
   - usair_fr_recent
   - usair_plant_triage
+  - usair_plant_compare
   - usair_home_check
   - usair_sip_lookup
 provides_hooks: []

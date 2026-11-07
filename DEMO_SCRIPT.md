@@ -1,8 +1,66 @@
 # Demo script
 
-Under 90 seconds, per the hackathon call. Show the plugin working. The two plants and the household are fictional; say so once.
+Under 90 seconds. The plants and the household are fictional; say so once.
 
-Record a Hermes CLI or desktop session with the plugin enabled. Suggested cuts:
+Record a Hermes CLI or desktop session with the plugin enabled. The compare cut below is the one to record. The longer plant-then-household tour is still underneath if you want it later.
+
+## Record this: what changed
+
+One fictional cement kiln. The solid-waste fact starts unknown, so CISWI is check with EHS. The same fact, supplied as false, moves that one row to skip. The other rows stay. This cut does not use the network.
+
+### 0:00
+
+On screen:
+
+> What changes if this kiln does not burn solid waste?
+
+### 0:08
+
+In Hermes:
+
+```
+/usair demo compare
+```
+
+The same run as a tool call, if you would rather show the agent:
+
+> Compare cement_plant_demo with cement_ciswi_after using usair_plant_compare. Do not fetch eCFR.
+
+What you should see:
+
+```
+What changed
+  before: cement_plant_demo (Mesa Gris Cement Works (fictional))
+  after:  cement_ciswi_after (Mesa Gris Cement Works (fictional))
+Compared offline. Citations are the bundled pack, not a live eCFR or Federal Register read.
+Input changes (1):
+  burns_solid_waste: unknown → false
+Verdict changes (1):
+  60-CCCC  check_with_ehs → skip
+    40 CFR part 60 subparts CCCC and DDDD  (bundled pack, not fetched)
+    K1: check_with_ehs → skip; missing unit.burns_solid_waste → none; The kiln does not combust solid waste (non-hazardous secondary materials that are not solid waste do not trigger CISWI).
+Unchanged rules: 19
+Missing before: 60-CCCC K1 unit.burns_solid_waste
+Missing after: none
+```
+
+Then the screening disclaimer.
+
+Say this, and stop:
+
+> The profile did not say whether the kiln burns solid waste, so CISWI stayed check with EHS. The same plant, with that fact set to false, is skip, and the reason is the pack's own sentence. Nineteen other rules did not move. That citation was not a live eCFR read.
+
+`burns_solid_waste: true` stays check with EHS. The pack flags a waste-burning kiln; it does not decide the 40 CFR part 241 solid-waste question. Do not say the row became "applies."
+
+### If you have twenty more seconds
+
+> Read 40 CFR 60.2015 with usair_cfr_get.
+
+That second call is the live text. Say so. The compare above did not do it.
+
+## Longer tour
+
+Suggested cuts:
 
 ## 0:00 — the question
 

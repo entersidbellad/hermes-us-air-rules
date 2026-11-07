@@ -32,7 +32,7 @@ cp -a . ~/.hermes/plugins/us-air-rules
 hermes plugins enable us-air-rules
 ```
 
-In a chat: `/usair demo plant`, `/usair template home`, `/usair fixtures`. From a shell, `hermes us-air-rules warm` fetches the date Title 40 is current through, so the next read is one request cheaper.
+In a chat: `/usair demo plant`, `/usair demo compare`, `/usair template home`, `/usair fixtures`. From a shell, `hermes us-air-rules warm` fetches the date Title 40 is current through, so the next read is one request cheaper.
 
 ## Tools
 
@@ -42,6 +42,7 @@ In a chat: `/usair demo plant`, `/usair template home`, `/usair fixtures`. From 
 | `usair_cfr_search` | Search current Title 40 text. Older versions of the same section are folded into the one in force. |
 | `usair_fr_recent` | Recent EPA rules, proposed rules, and notices that name one Title 40 part. A proposed rule is not law. |
 | `usair_plant_triage` | Screen a facility profile, or the fixture `cement_plant_demo` / `lime_plant_demo`. |
+| `usair_plant_compare` | Diff two plant profiles with the same pack: changed inputs, changed rule and unit verdicts, reasons, missing facts, and the unchanged count. |
 | `usair_home_check` | Screen a household or small shop, or the fixture `homeowner_demo` / `body_shop_demo`. |
 | `usair_sip_lookup` | Search one state's EPA-approved SIP rules in 40 CFR part 52. |
 
@@ -49,12 +50,15 @@ The bundled skill `us-air-rules:air-rules` tells the model to call these before 
 
 A missing fact never becomes `skip`. The engine uses three-valued logic: yes, no, or unknown. Unknown stops the rule and returns the pack's fallback (`check_with_ehs` or `check`) plus the field names that were missing.
 
-`include_fr: true` on a plant triage attaches recent Federal Register documents to the rows that apply or need a check. The screening result still stands if the Register is down; the row says the Register was not checked.
+`include_fr: true` on a plant triage attaches recent Federal Register documents to the rows that apply or need a check. The screening result still stands if the Register is down; the row says the Register was not checked. `usair_plant_compare` does not take `include_fr` and does not fetch.
+
+`/usair demo compare` screens `cement_plant_demo` against `cement_ciswi_after`. Those two fictional profiles differ by one field, `burns_solid_waste` (`unknown` to `false`). CISWI subparts CCCC/DDDD (`60-CCCC`) moves from `check_with_ehs` to `skip` because the kiln does not combust solid waste. The other 19 pack rows stay put. The citation in that result is the bundled pack, not a live eCFR read. `/usair compare <before_fixture> <after_fixture>` does the same for any two plant fixtures. A fixture is used only when that side's profile field is omitted. Null, blank, or `{}` is an error and does not load the fixture. Every unit needs a unique string id; a duplicate or a missing id is an error, not a guess.
 
 ### Try it
 
 - "Read 40 CFR 63.1340 and tell me what subpart LLL covers. Quote the text."
 - "Run the fictional cement plant and list only the rules I would have to check with EHS."
+- "What changes if the Mesa Gris kiln does not burn solid waste? Compare cement_plant_demo with cement_ciswi_after."
 - "I spray-paint my own car in the driveway, maybe once a year, in Pennsylvania. Does the autobody rule apply?"
 - "What has EPA proposed on portland cement manufacturing in the last two years?"
 - "Does Texas have an EPA-approved rule on outdoor burning?"
@@ -88,7 +92,7 @@ Blank profiles are in `data/templates/`. `/usair template plant` prints one.
 ## Network, data, and privacy
 
 - **Two hosts, HTTPS GET only:** `www.ecfr.gov` and `www.federalregister.gov`. A redirect to any other host is refused. An `http://` URL on these hosts is upgraded to HTTPS.
-- **What is sent:** the citation or part you asked for, the search words, and (for the Register) the document type and the date window. A facility profile is evaluated on the machine and is not sent. `usair_plant_triage` and `usair_home_check` make no request unless `include_fr` is set.
+- **What is sent:** the citation or part you asked for, the search words, and (for the Register) the document type and the date window. A facility profile is evaluated on the machine and is not sent. `usair_plant_triage` and `usair_home_check` make no request unless `include_fr` is set. `usair_plant_compare` makes no request. It reads a bundled fixture only when you pass a fixture name, and it does not store either profile.
 - **What is stored:** public regulatory text and search responses, as JSON, under `<HERMES_HOME>/plugin-data/us-air-rules/cache/`. No questions and no profiles. The cap is `cache_max_mb` (default 100). Delete the folder any time.
 - **What is read:** only this plugin's own settings, through Hermes's plugin settings API.
 - **Pace and size:** at most one request per second per host, a 20 second timeout, and a 10 MB response cap. eCFR's full-text endpoint requires `Accept-Encoding: gzip`; the plugin sends it.
@@ -106,14 +110,14 @@ Under `plugins.entries.us-air-rules.settings` in `config.yaml`:
 ## Development
 
 ```bash
-python -m unittest discover -s tests -v          # 51 offline tests, no network
+python -m unittest discover -s tests -v          # 63 offline tests, no network
 python scripts/verify_packs.py                   # live eCFR phrase check; add --mark to rewrite verified flags
 hermes plugins validate .                        # the check the catalog runs
 ```
 
-`hermes plugins validate .` on this tree (Hermes Agent vgit, 6 November 2026) passed every check, including the security scan at `safe`, with no warnings.
+`hermes plugins validate .` on the 0.1.0 tree (Hermes Agent vgit, 6 November 2026) passed every check, including the security scan at `safe`, with no warnings. Run it again on the commit you ship. 0.2.0 adds `usair_plant_compare` and does not add a host or a background task.
 
-The offline tests use a fake transport. They cover citation parsing, the three-valued engine, both fictional fixtures, eCFR XML, search dedupe to the version in force, Federal Register normalization, host allowlisting, redirects, gzip, the size cap, stale cache, and that `register()` matches `plugin.yaml`.
+The offline tests use a fake transport. They cover citation parsing, the three-valued engine, the fictional fixtures, plant compare, eCFR XML, search dedupe to the version in force, Federal Register normalization, host allowlisting, redirects, gzip, the size cap, stale cache, and that `register()` matches `plugin.yaml`.
 
 ## What this plugin does not do
 
