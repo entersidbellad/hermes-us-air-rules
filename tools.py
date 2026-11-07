@@ -11,6 +11,7 @@ import copy
 import json
 import logging
 import re
+import textwrap
 import time
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -717,12 +718,17 @@ def slash_usair(raw: str, tools: Optional[Tools] = None) -> str:
     arg = parts[1].lower() if len(parts) > 1 else ""
     tools = tools or Tools()
     if cmd in ("help", ""):
-        return ("Usage: /usair demo [plant|lime|home|shop|compare] | "
-                "/usair compare <before_fixture> <after_fixture> | "
-                "/usair template [plant|home] | /usair fixtures\n"
-                "demo compare is the fictional kiln before and after, offline. "
-                "plant, lime, home, and shop stay as they were. template prints a blank profile. "
-                "Live text is usair_cfr_get / usair_cfr_search / usair_fr_recent / usair_sip_lookup.")
+        return "\n".join([
+            "Usage: /usair demo [plant|lime|home|shop|compare]",
+            "  /usair compare <before_fixture> <after_fixture>",
+            "  /usair template [plant|home]",
+            "  /usair fixtures",
+            "demo compare is the fictional kiln before and after, offline.",
+            "plant, lime, home, and shop stay as they were.",
+            "template prints a blank profile.",
+            "Live text is usair_cfr_get, usair_cfr_search, usair_fr_recent,",
+            "  or usair_sip_lookup.",
+        ])
     if cmd == "compare":
         if len(parts) != 3:
             return "Usage: /usair compare <before_fixture> <after_fixture>"
@@ -731,7 +737,7 @@ def slash_usair(raw: str, tools: Optional[Tools] = None) -> str:
         lines = ["Fictional fixtures (no real facility):"]
         for name in fixture_names():
             data = load_fixture(name)
-            lines.append(f"- {name} ({data.get('layer')}): {data.get('note', '')}")
+            lines.extend(_fit(f"- {name} ({data.get('layer')}): {data.get('note', '')}"))
         return "\n".join(lines)
     if cmd == "template":
         name = "home" if arg in ("home", "homeowner", "shop") else "plant"
@@ -770,17 +776,32 @@ def _render(result: Dict[str, Any]) -> str:
     lines = []
     counts = result.get("counts") or {}
     if counts:
-        lines.append("Counts: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
-    for f in result.get("findings") or []:
-        missing = f" [missing: {', '.join(f['missing'])}]" if f.get("missing") else ""
-        lines.append(f"- {f['verdict']:16} {f['id']:18} {f.get('citation') or ''}{missing}")
-        if f.get("why"):
-            lines.append(f"    {f['why']}")
+        lines.extend(_fit("Counts: " + ", ".join(f"{k} {v}" for k, v in counts.items())))
+    for finding in result.get("findings") or []:
+        missing = f" [missing: {', '.join(finding['missing'])}]" if finding.get("missing") else ""
+        lines.extend(_fit(
+            f"- {finding['verdict']:16} {finding['id']:18} {finding.get('citation') or ''}{missing}"))
+        if finding.get("why"):
+            lines.extend(_fit(finding["why"], indent="    "))
     if result.get("not_relevant"):
-        lines.append("Not in play: " + ", ".join(result["not_relevant"]))
+        lines.extend(_fit("Not in play: " + ", ".join(result["not_relevant"])))
     lines.append("")
-    lines.append(result.get("disclaimer") or DISCLAIMER)
+    lines.extend(_fit(result.get("disclaimer") or DISCLAIMER))
     return "\n".join(lines)
+
+
+def _fit(text: str, indent: str = "") -> List[str]:
+    cleaned = " ".join(str(text).split())
+    if not cleaned:
+        return []
+    return textwrap.wrap(
+        cleaned,
+        width=78,
+        initial_indent=indent,
+        subsequent_indent=(indent + "  ") if indent else "  ",
+        break_long_words=True,
+        break_on_hyphens=False,
+    )
 
 
 def _fixture_name(value: Any) -> bool:

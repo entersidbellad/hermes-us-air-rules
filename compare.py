@@ -27,6 +27,7 @@ VERIFIED_MEANS = (
 
 _MISSING = object()
 _SCREEN_WIDTH = 78
+_UNIT_DETAIL_CAP = 8
 _UNIT_FIELD = re.compile(r'^units\["(.*)"\]\.(.+)$')
 _FACT_LABELS = {
     "burns_solid_waste": "Whether the plant burns solid waste",
@@ -222,10 +223,9 @@ def render_compare(result: Dict[str, Any]) -> str:
         lines.extend(_wrap(f"Equipment added: {added}. Equipment removed: {removed}."))
     missing_before = result.get("missing_before") or []
     missing_after = result.get("missing_after") or []
-    if missing_before and not missing_after:
-        lines.extend(_wrap("The missing fact is now filled in."))
-    elif missing_before != missing_after:
-        lines.extend(_wrap("The missing facts are not the same on both sides."))
+    note = _missing_note(result)
+    if note:
+        lines.extend(_wrap(note))
     lines.extend(_wrap("Missing before: " + _fmt_missing(missing_before) + "."))
     lines.extend(_wrap("Missing after: " + _fmt_missing(missing_after) + "."))
     for warning in result.get("warnings") or []:
@@ -270,92 +270,112 @@ def _path_words(path: str) -> str:
     return path
 
 
-def _outcome_blocks(row: Dict[str, Any], kind: str) -> List[str]:
+def _outcome_blocks(row: Dict[str, Any], _kind: str) -> List[str]:
+    """Speak the rule total and each unit from that unit's own before and after.
+
+    The row class is unused here. Added and removed equipment still get that
+    unit's verdict, reason, and citation from its own snapshot.
+    """
     name = ((row.get("title") or row["id"]).split(":")[0]).strip()
     ident = row["id"]
     units = row.get("unit_changes") or []
     before_v = (row.get("before") or {}).get("verdict")
     after_v = (row.get("after") or {}).get("verdict")
     lines: List[str] = []
-    membership_only = bool(units) and all(unit.get("change") in ("added", "removed") for unit in units)
-    if kind == "units" or (membership_only and before_v == after_v):
-        bits = []
-        for unit in units[:3]:
-            kind_word = (unit.get("unit_type") or "unit").replace("_", " ")
-            uid = unit.get("unit_id")
-            if unit.get("change") == "added":
-                bits.append(f"{kind_word} {uid} was added")
-            else:
-                bits.append(f"{kind_word} {uid} was removed")
-        extra = len(units) - len(bits)
-        if extra > 0:
-            bits.append(f"{extra} more equipment rows")
-        lines.extend(_wrap(f"{'; '.join(bits)}. {name} ({ident}) stayed {_plain(after_v)}."))
-        lines.extend(_wrap(f"Evidence: {ident} {before_v} (answer unchanged)."))
-        return lines
-    flips = _unit_flips(units)
-    lead = _equipment_lead(flips or units)
-    if before_v != after_v:
-        tail = " for this screened rule" if after_v == "skip" else ""
-        sentence = f"{lead}{name} ({ident}): was {_plain(before_v)}, now {_plain(after_v)}{tail}."
-    elif flips:
-        flip = flips[0]
-        fb = (flip.get("before") or {}).get("verdict")
-        fa = (flip.get("after") or {}).get("verdict")
-        tail = " for this screened rule" if fa == "skip" else ""
-        sentence = (
-            f"{lead}{name} ({ident}): was {_plain(fb)}, now {_plain(fa)}{tail}. "
-            f"The rule rollup stayed {_plain(after_v)}."
-        )
+    if len(units) == 1 and _unit_matches_rule(units[0], before_v, after_v):
+        lines.extend(_wrap(_combined_sentence(units[0], name, ident, before_v, after_v)))
+        why = _unit_why(units[0]) or _rule_why(row)
+        if why:
+            lines.extend(_wrap("Why: " + why))
     else:
-        sentence = (
-            f"{lead}{name} ({ident}): still {_plain(before_v)}. "
-            "The screened answer did not change."
-        )
-    lines.extend(_wrap(sentence))
-    why = _why_text(row)
-    if why:
-        lines.extend(_wrap("Why: " + why))
+        lines.extend(_wrap(_rule_only_sentence(name, ident, before_v, after_v)))
+        shown = units[:_UNIT_DETAIL_CAP]
+        omitted = len(units) - len(shown)
+        details = [(_unit_sentence(unit), _unit_why(unit)) for unit in shown]
+        unique = list(dict.fromkeys(why for _, why in details if why))
+        if len(unique) <= 1:
+            for sentence, _why in details:
+                lines.extend(_wrap(sentence))
+            if unique:
+                lines.extend(_wrap("Why: " + unique[0]))
+        else:
+            for sentence, why in details:
+                lines.extend(_wrap(sentence))
+                if why:
+                    lines.extend(_wrap("Why: " + why))
+        if omitted:
+            lines.extend(_wrap(_omitted_equipment(omitted)))
+        elif not units:
+            why = _rule_why(row)
+            if why:
+                lines.extend(_wrap("Why: " + why))
     citation = row.get("citation") or ""
     if citation:
         section = row.get("applicability_section")
         extra = f", section {section}" if section else ""
         lines.extend(_wrap(f"Citation: {citation}{extra}. Bundled pack, not a live fetch."))
     lines.extend(_wrap("Evidence: " + _evidence(row)))
-    if after_v == "skip" and before_v != after_v:
+    if _moved_to_skip(before_v, after_v, units):
         lines.extend(_wrap("Skip here covers only the screened rule named above."))
     return lines
 
 
-def _unit_flips(units: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    flips = []
-    for unit in units:
-        if unit.get("change") != "verdict":
-            continue
-        before = (unit.get("before") or {}).get("verdict")
-        after = (unit.get("after") or {}).get("verdict")
-        if before != after:
-            flips.append(unit)
-    return flips
+def _unit_matches_rule(unit: Dict[str, Any], before_v: Optional[str], after_v: Optional[str]) -> bool:
+    if unit.get("change") not in ("verdict", "explanation"):
+        return False
+    before = (unit.get("before") or {}).get("verdict")
+    after = (unit.get("after") or {}).get("verdict")
+    return before == before_v and after == after_v
 
 
-def _equipment_lead(units: List[Dict[str, Any]]) -> str:
-    changed = [unit for unit in units if unit.get("change") not in (None, "unchanged")]
-    pick = (changed or units)[:1]
-    if not pick:
-        return ""
-    unit = pick[0]
+def _combined_sentence(unit: Dict[str, Any], name: str, ident: str,
+                       before_v: Optional[str], after_v: Optional[str]) -> str:
+    lead = f"{_equipment_name(unit)}, "
+    if before_v != after_v:
+        tail = " for this screened rule" if after_v == "skip" else ""
+        return f"{lead}{name} ({ident}): was {_plain(before_v)}, now {_plain(after_v)}{tail}."
+    return (
+        f"{lead}{name} ({ident}): still {_plain(before_v)}. "
+        "The screened answer did not change."
+    )
+
+
+def _rule_only_sentence(name: str, ident: str, before_v: Optional[str], after_v: Optional[str]) -> str:
+    if before_v != after_v:
+        tail = " for this screened rule" if after_v == "skip" else ""
+        return f"{name} ({ident}): the screened rule was {_plain(before_v)}, now {_plain(after_v)}{tail}."
+    return f"{name} ({ident}): the screened rule stayed {_plain(after_v)}."
+
+
+def _unit_sentence(unit: Dict[str, Any]) -> str:
+    label = _equipment_name(unit)
+    change = unit.get("change")
+    if change == "added":
+        verdict = (unit.get("after") or {}).get("verdict")
+        tail = " for this screened rule" if verdict == "skip" else ""
+        return f"{label} was added: {_plain(verdict)}{tail}."
+    if change == "removed":
+        verdict = (unit.get("before") or {}).get("verdict")
+        return f"{label} was removed: was {_plain(verdict)}."
+    before = (unit.get("before") or {}).get("verdict")
+    after = (unit.get("after") or {}).get("verdict")
+    if before != after:
+        tail = " for this screened rule" if after == "skip" else ""
+        return f"{label}: was {_plain(before)}, now {_plain(after)}{tail}."
+    return f"{label}: still {_plain(before)}. The screened answer did not change."
+
+
+def _equipment_name(unit: Dict[str, Any]) -> str:
     kind = (unit.get("unit_type") or "unit").replace("_", " ")
-    return f"{kind.title()} {unit.get('unit_id')}, "
+    return f"{kind.title()} {unit.get('unit_id')}"
 
 
-def _why_text(row: Dict[str, Any]) -> str:
-    units = row.get("unit_changes") or []
-    changed = [unit for unit in units if unit.get("change") not in (None, "unchanged")]
-    for unit in changed or units:
-        snap = unit.get("after") or unit.get("before") or {}
-        if snap.get("why"):
-            return str(snap["why"])
+def _unit_why(unit: Dict[str, Any]) -> str:
+    snap = unit.get("after") or unit.get("before") or {}
+    return str(snap.get("why") or "")
+
+
+def _rule_why(row: Dict[str, Any]) -> str:
     after = row.get("after") or {}
     before = row.get("before") or {}
     return str(after.get("why") or before.get("why") or "")
@@ -365,21 +385,123 @@ def _evidence(row: Dict[str, Any]) -> str:
     before = (row.get("before") or {}).get("verdict")
     after = (row.get("after") or {}).get("verdict")
     units = row.get("unit_changes") or []
-    flips = _unit_flips(units)
-    bits: List[str] = []
-    if flips and before == after:
-        for unit in flips[:3]:
-            bits.append(
-                f"{row['id']} {unit.get('unit_id')} "
-                f"{(unit.get('before') or {}).get('verdict')} → {(unit.get('after') or {}).get('verdict')}"
-            )
-        bits.append(f"rollup {after}")
-    else:
-        ids = [str(unit.get("unit_id")) for unit in units if unit.get("unit_id")]
-        who = (" " + ", ".join(ids[:4])) if ids else ""
-        arrow = f"{before} (answer unchanged)" if before == after else f"{before} → {after}"
-        bits.append(f"{row['id']}{who} {arrow}")
+    if len(units) == 1 and _unit_matches_rule(units[0], before, after):
+        return _one_evidence(row["id"], units[0])
+    bits = [_rollup_evidence(row["id"], before, after)]
+    shown = units[:_UNIT_DETAIL_CAP]
+    for unit in shown:
+        bits.append(_unit_evidence(unit))
+    omitted = len(units) - len(shown)
+    if omitted:
+        bits.append(_omitted_equipment(omitted).rstrip("."))
     return "; ".join(bits)
+
+
+def _one_evidence(ident: str, unit: Dict[str, Any]) -> str:
+    before = (unit.get("before") or {}).get("verdict")
+    after = (unit.get("after") or {}).get("verdict")
+    if before == after:
+        return f"{ident} {unit.get('unit_id')} {before} (answer unchanged)"
+    return f"{ident} {unit.get('unit_id')} {before} → {after}"
+
+
+def _unit_evidence(unit: Dict[str, Any]) -> str:
+    uid = unit.get("unit_id")
+    change = unit.get("change")
+    if change == "added":
+        return f"{uid} added {(unit.get('after') or {}).get('verdict')}"
+    if change == "removed":
+        return f"{uid} removed was {(unit.get('before') or {}).get('verdict')}"
+    before = (unit.get("before") or {}).get("verdict")
+    after = (unit.get("after") or {}).get("verdict")
+    if before == after:
+        return f"{uid} {before} (answer unchanged)"
+    return f"{uid} {before} → {after}"
+
+
+def _rollup_evidence(ident: str, before: Optional[str], after: Optional[str]) -> str:
+    if before == after:
+        return f"{ident} rollup {before} (answer unchanged)"
+    return f"{ident} rollup {before} → {after}"
+
+
+def _omitted_equipment(omitted: int) -> str:
+    noun = "change" if omitted == 1 else "changes"
+    verb = "is" if omitted == 1 else "are"
+    return f"{omitted} more equipment {noun} {verb} in the tool result."
+
+
+def _moved_to_skip(before_v: Optional[str], after_v: Optional[str], units: List[Dict[str, Any]]) -> bool:
+    if after_v == "skip" and before_v != after_v:
+        return True
+    for unit in units:
+        if unit.get("change") == "removed":
+            continue
+        after = (unit.get("after") or {}).get("verdict")
+        before = (unit.get("before") or {}).get("verdict")
+        if after == "skip" and before != after:
+            return True
+    return False
+
+
+def _missing_note(result: Dict[str, Any]) -> Optional[str]:
+    """Say a fact was filled in only when that same equipment is still screened."""
+    before = result.get("missing_before") or []
+    after = result.get("missing_after") or []
+    if before == after:
+        return None
+    removed_plant = {unit.get("id") for unit in result.get("units_removed") or []}
+    removed_on_rule = set()
+    after_verdict: Dict[Any, Any] = {}
+    for key in ("verdict_changes", "explanation_changes", "unit_set_changes"):
+        for row in result.get(key) or []:
+            after_verdict[row.get("id")] = (row.get("after") or {}).get("verdict")
+            for unit in row.get("unit_changes") or []:
+                if unit.get("change") == "removed":
+                    removed_on_rule.add((row.get("id"), unit.get("unit_id")))
+    for row in result.get("rules_removed") or []:
+        after_verdict[row.get("id")] = "removed"
+    after_fields: Dict[Any, set] = {}
+    for row in after:
+        after_fields.setdefault((row.get("id"), row.get("unit_id")), set()).update(row.get("fields") or [])
+    filled = 0
+    left_with_equipment = 0
+    left_the_screen = 0
+    for row in before:
+        pair = (row.get("id"), row.get("unit_id"))
+        before_fields = set(row.get("fields") or [])
+        still = after_fields.get(pair)
+        if still is not None and before_fields <= still:
+            continue
+        if still is not None:
+            filled += 1
+            continue
+        unit_removed = row.get("unit_id") in removed_plant or pair in removed_on_rule
+        verdict = after_verdict.get(row.get("id"))
+        if unit_removed:
+            left_with_equipment += 1
+        elif verdict in ("not_relevant", "removed", None):
+            left_the_screen += 1
+        else:
+            filled += 1
+    if filled and not left_with_equipment and not left_the_screen and not after:
+        return "The missing fact is now filled in." if filled == 1 else "The missing facts are now filled in."
+    if left_with_equipment and not filled and not after:
+        return "No missing facts remain. The equipment that still needed a fact was removed."
+    if left_the_screen and not filled and not left_with_equipment and not after:
+        return "No missing facts remain. The rule is outside this screen now."
+    parts: List[str] = []
+    if filled:
+        parts.append("Some missing facts were filled in.")
+    if left_with_equipment:
+        parts.append("Some missing facts left because that equipment was removed.")
+    if left_the_screen:
+        parts.append("Some missing facts left because that rule is outside this screen.")
+    if after:
+        parts.append("Other missing facts remain.")
+    if parts:
+        return " ".join(parts)
+    return "The missing facts are not the same on both sides."
 
 
 def _plain(verdict: Optional[str]) -> str:
