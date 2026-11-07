@@ -110,12 +110,12 @@ Under `plugins.entries.us-air-rules.settings` in `config.yaml`:
 ## Development
 
 ```bash
-python -m unittest discover -s tests -v          # 63 offline tests, no network
+python -m unittest discover -s tests -v          # 69 offline tests, no network
 python scripts/verify_packs.py                   # live eCFR phrase check; add --mark to rewrite verified flags
 hermes plugins validate .                        # the check the catalog runs
 ```
 
-`hermes plugins validate .` on the 0.1.0 tree (Hermes Agent vgit, 6 November 2026) passed every check, including the security scan at `safe`, with no warnings. Run it again on the commit you ship. 0.2.0 adds `usair_plant_compare` and does not add a host or a background task.
+`hermes plugins validate .` on the 0.1.0 tree (Hermes Agent vgit, 6 November 2026) passed every check, including the security scan at `safe`, with no warnings. Run it again on the commit you ship. 0.2.0 adds `usair_plant_compare` and does not add a host or a background task. 0.2.1 keeps that compare and prints the terminal summary in plain language. A named unit shows that unit's own before and after, and a removed unit is not described as a fact that was supplied. The tool JSON still returns the raw verdict enums.
 
 The offline tests use a fake transport. They cover citation parsing, the three-valued engine, the fictional fixtures, plant compare, eCFR XML, search dedupe to the version in force, Federal Register normalization, host allowlisting, redirects, gzip, the size cap, stale cache, and that `register()` matches `plugin.yaml`.
 

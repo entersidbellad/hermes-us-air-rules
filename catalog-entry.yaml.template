@@ -10,7 +10,7 @@ maintainer: entersidbellad
 tier: community
 category: tools
 docs_url: https://github.com/entersidbellad/hermes-us-air-rules#readme
-version: "0.2.0"
+version: "0.2.1"
 requires_hermes: ">=0.22.2"
 platforms: []
 capabilities:

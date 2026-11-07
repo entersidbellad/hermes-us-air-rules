@@ -24,7 +24,7 @@ pkg = importlib.util.module_from_spec(_spec)
 sys.modules["us_air_rules"] = pkg
 _spec.loader.exec_module(pkg)
 
-from us_air_rules import citations, client, engine, fedreg, profiles, schemas, tools  # noqa: E402
+from us_air_rules import citations, client, compare, engine, fedreg, profiles, schemas, tools  # noqa: E402
 from us_air_rules.client import Cache, Http, Response, Store, UsairError  # noqa: E402
 
 TITLES = {
@@ -944,8 +944,12 @@ class PlantCompare(unittest.TestCase):
             "id": "60-CCCC", "unit_id": "K1", "fields": ["unit.burns_solid_waste"],
         }])
         self.assertEqual(out["missing_after"], [])
+        self.assertIn("Mesa Gris Cement Works (fictional)", out["summary"])
         self.assertIn("check_with_ehs → skip", out["summary"])
-        self.assertIn("bundled pack, not fetched", out["summary"])
+        self.assertIn("not a live fetch", out["summary"])
+        self.assertIn("Skip here covers only the screened rule named above.", out["summary"])
+        self.assertNotIn("compliant", out["summary"].lower())
+        self.assertNotIn("not regulated", out["summary"].lower())
         self.assertNotIn("retrieved", out["summary"])
         for banned in ("Holcim", "Carmeuse", "Hatch", "Lafarge"):
             self.assertNotIn(banned, json.dumps(profiles.load_fixture("cement_ciswi_after")))
@@ -961,8 +965,8 @@ class PlantCompare(unittest.TestCase):
         self.assertEqual(out["unit_set_changes"], [])
         self.assertEqual(out["counts"]["unchanged"], out["counts"]["rules_compared"])
         self.assertGreater(out["counts"]["unchanged"], 0)
-        self.assertIn("Input changes (0):", out["summary"])
-        self.assertIn("Verdict changes (0):", out["summary"])
+        self.assertIn("No input field changed.", out["summary"])
+        self.assertIn("No screened answer changed.", out["summary"])
 
     def test_known_solid_waste_changes_reason_not_verdict(self):
         entry = next(e for e in profiles.load_pack("plant")["entries"] if e["id"] == "60-CCCC")
@@ -984,7 +988,9 @@ class PlantCompare(unittest.TestCase):
         self.assertEqual(row["unit_changes"][0]["after"]["why"], flagged)
         self.assertEqual(out["counts"]["unchanged"], 0)
         self.assertEqual(out["counts"]["rules_compared"], 1)
-        self.assertIn("verdict unchanged", out["summary"])
+        flat = " ".join(out["summary"].split())
+        self.assertIn("did not change", flat)
+        self.assertIn("check_with_ehs (answer unchanged)", flat)
 
     def test_added_unit_does_not_steal_an_existing_id(self):
         before = {"name": "Crushers (fictional)", "naics": "327310", "units": [
@@ -1049,7 +1055,8 @@ class PlantCompare(unittest.TestCase):
         self.assertTrue(any("unknown type 'widget'" in warning for warning in out["warnings"]))
         blob = json.dumps(out["verdict_changes"] + out["explanation_changes"] + out["unit_set_changes"])
         self.assertNotIn("W1", blob)
-        self.assertIn("Warnings:", out["summary"])
+        self.assertIn("Note:", out["summary"])
+        self.assertIn("unknown type 'widget'", out["summary"])
 
     def test_reordered_units_are_the_same_plant(self):
         before = profiles.load_fixture("cement_plant_demo")["profile"]
@@ -1119,9 +1126,12 @@ class PlantCompare(unittest.TestCase):
         self.assertEqual(text, again)
         self.assertIn("cement_plant_demo", text)
         self.assertIn("cement_ciswi_after", text)
-        self.assertIn("60-CCCC  check_with_ehs → skip", text)
-        self.assertIn("Unchanged rules: 19", text)
-        self.assertIn("not a live eCFR", text)
+        self.assertIn("60-CCCC K1 check_with_ehs → skip", text)
+        self.assertIn("Unchanged screened rules: 19", text)
+        self.assertIn("Not a live eCFR", text)
+        self.assertIn("demo compare", tools.slash_usair("").lower())
+        self.assertIn("plant|lime|home|shop|compare", tools.slash_usair(""))
+        self.assertTrue(all(len(line) <= 80 for line in text.splitlines()))
         self.assertIn("Screening aid", text)
         self.assertIn("cement_ciswi_after", tools.slash_usair("fixtures", self.tools))
         self.assertIn("compare", tools.slash_usair("").lower())
@@ -1132,6 +1142,199 @@ class PlantCompare(unittest.TestCase):
         }))
         self.assertTrue(parsed["ok"])
         self.assertEqual(parsed["summary"], text)
+        self.assertEqual(self.tools.store.http.requests, 0)
+
+    def test_summary_stays_within_80_columns_for_long_text(self):
+        long_why = "kiln " * 80
+        long_name = "Mesa " * 40
+        payload = {
+            "before": {"name": long_name, "state": "TX", "fixture": "cement_plant_demo"},
+            "after": {"name": long_name, "state": "TX", "fixture": "cement_ciswi_after"},
+            "input_changes": [{
+                "path": "burns_solid_waste", "change": "changed", "before": "unknown", "after": False,
+            }],
+            "verdict_changes": [{
+                "id": "60-CCCC",
+                "title": "CISWI: waste-burning kilns",
+                "citation": "40 CFR part 60 subparts CCCC and DDDD",
+                "applicability_section": "60.2015",
+                "before": {"verdict": "check_with_ehs", "why": long_why, "missing": ["unit.burns_solid_waste"]},
+                "after": {"verdict": "skip", "why": long_why, "missing": []},
+                "unit_changes": [{
+                    "unit_id": "K" + ("1" * 40),
+                    "unit_type": "kiln",
+                    "change": "verdict",
+                    "before": {"verdict": "check_with_ehs", "why": long_why, "missing": ["unit.burns_solid_waste"]},
+                    "after": {"verdict": "skip", "why": long_why, "missing": []},
+                }],
+            }],
+            "explanation_changes": [],
+            "unit_set_changes": [],
+            "missing_before": [{"id": "60-CCCC", "unit_id": "K1", "fields": ["unit.burns_solid_waste"]}],
+            "missing_after": [],
+            "counts": {"unchanged": 19, "units_added": 0, "units_removed": 0},
+            "warnings": ["note " * 30],
+            "disclaimer": "Screening aid, not a compliance determination and not legal advice. " * 3,
+        }
+        text = compare.render_compare(payload)
+        lines = text.splitlines()
+        self.assertTrue(lines)
+        self.assertTrue(all(len(line) <= 80 for line in lines), max(lines, key=len))
+        flat = " ".join(text.split())
+        self.assertIn("check_with_ehs → skip", flat)
+        self.assertIn("Kiln", text)
+        self.assertIn("Offline bundled pack", flat)
+        self.assertLessEqual(max(len(line) for line in lines), 100)
+
+    def test_named_unit_keeps_its_own_verdict(self):
+        before = {"name": "Two kilns (fictional)", "state": "TX", "naics": "327310", "units": [
+            {"id": "K1", "type": "kiln", "product": "cement"},
+            {"id": "K2", "type": "kiln", "product": "cement", "construction_date": "1990-01-01"},
+        ]}
+        after = {"name": "Two kilns (fictional)", "state": "TX", "naics": "327310", "units": [
+            {"id": "K1", "type": "kiln", "product": "cement",
+             "construction_date": "1970-06-01", "modified_or_reconstructed": False},
+            {"id": "K2", "type": "kiln", "product": "cement", "construction_date": "1971"},
+        ]}
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": before, "after_profile": after, "rules": ["60-F"],
+        }))
+        row = out["verdict_changes"][0]
+        self.assertEqual(row["id"], "60-F")
+        self.assertEqual(row["before"]["verdict"], "applies")
+        self.assertEqual(row["after"]["verdict"], "check_with_ehs")
+        by_id = {unit["unit_id"]: unit for unit in row["unit_changes"]}
+        self.assertEqual(by_id["K1"]["before"]["verdict"], "check_with_ehs")
+        self.assertEqual(by_id["K1"]["after"]["verdict"], "skip")
+        self.assertEqual(by_id["K2"]["before"]["verdict"], "applies")
+        self.assertEqual(by_id["K2"]["after"]["verdict"], "check_with_ehs")
+        flat = " ".join(out["summary"].split())
+        self.assertIn("the screened rule was applies, now check with EHS", flat)
+        self.assertIn("Kiln K1: was check with EHS, now skip for this screened rule.", flat)
+        self.assertIn("Kiln K2: was applies, now check with EHS.", flat)
+        self.assertNotIn("Kiln K1: was applies", flat)
+        self.assertIn("60-F rollup applies → check_with_ehs", flat)
+        self.assertIn("K1 check_with_ehs → skip", flat)
+        self.assertIn("K2 applies → check_with_ehs", flat)
+        self.assertNotIn("K1 applies → check_with_ehs", flat)
+        self.assertNotIn("K2 check_with_ehs → skip", flat)
+        self.assertTrue(all(len(line) <= 80 for line in out["summary"].splitlines()))
+        self.assertEqual(json.loads(self.handlers["usair_plant_compare"]({
+            "before_profile": before, "after_profile": after, "rules": ["60-F"],
+        }))["verdict_changes"][0]["unit_changes"][0]["before"]["verdict"], "check_with_ehs")
+        self.assertEqual(self.tools.store.http.requests, 0)
+
+    def test_every_changed_kiln_stays_on_the_screen(self):
+        def plant(waste, hold_last):
+            units = []
+            for uid in ("K1", "K2", "K3", "K4", "K5"):
+                unit = {"id": uid, "type": "kiln", "product": "cement"}
+                if uid == "K5" and hold_last:
+                    unit["burns_solid_waste"] = "unknown"
+                units.append(unit)
+            profile = {"name": "Five kilns (fictional)", "naics": "327310", "units": units}
+            if waste is not None:
+                profile["burns_solid_waste"] = waste
+            return profile
+
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": plant(None, True),
+            "after_profile": plant(False, True),
+            "rules": ["60-CCCC"],
+        }))
+        row = out["verdict_changes"][0]
+        self.assertEqual(row["before"]["verdict"], row["after"]["verdict"])
+        self.assertEqual(row["after"]["verdict"], "check_with_ehs")
+        flips = [unit["unit_id"] for unit in row["unit_changes"]]
+        self.assertEqual(flips, ["K1", "K2", "K3", "K4"])
+        flat = " ".join(out["summary"].split())
+        for uid in flips:
+            self.assertIn(f"{uid} check_with_ehs → skip", flat)
+        self.assertNotIn("more equipment", flat)
+        self.assertIn("the screened rule stayed check with EHS", flat)
+        self.assertTrue(all(len(line) <= 80 for line in out["summary"].splitlines()))
+
+        many = [f"K{i:02d}" for i in range(1, 11)]
+
+        def wide(waste):
+            units = []
+            for uid in many:
+                unit = {"id": uid, "type": "kiln", "product": "cement"}
+                if uid == "K10":
+                    unit["burns_solid_waste"] = "unknown"
+                units.append(unit)
+            return {"name": "Ten kilns (fictional)", "naics": "327310",
+                    "burns_solid_waste": waste, "units": units}
+
+        wide_out = self._aligned(self.tools.plant_compare({
+            "before_profile": wide("unknown"),
+            "after_profile": wide(False),
+            "rules": ["60-CCCC"],
+        }))
+        wide_row = wide_out["verdict_changes"][0]
+        self.assertEqual([unit["unit_id"] for unit in wide_row["unit_changes"]], many[:9])
+        wide_flat = " ".join(wide_out["summary"].split())
+        self.assertIn("K01 check_with_ehs → skip", wide_flat)
+        self.assertIn("K08 check_with_ehs → skip", wide_flat)
+        self.assertNotIn("K09 check_with_ehs → skip", wide_flat)
+        self.assertEqual(wide_flat.count("1 more equipment change is in the tool result"), 2)
+        self.assertEqual(self.tools.store.http.requests, 0)
+
+    def test_removing_the_unknown_kiln_is_not_a_supplied_fact(self):
+        before = {"name": "One kiln (fictional)", "naics": "327310", "units": [
+            {"id": "K1", "type": "kiln", "product": "cement"}]}
+        after = {"name": "One kiln (fictional)", "naics": "327310", "units": [
+            {"id": "CR1", "type": "crusher", "construction_date": "1995-04-01", "follows_subpart_f": False}]}
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": before, "after_profile": after, "rules": ["60-CCCC"],
+        }))
+        self.assertEqual(out["missing_before"], [{
+            "id": "60-CCCC", "unit_id": "K1", "fields": ["unit.burns_solid_waste"],
+        }])
+        self.assertEqual(out["missing_after"], [])
+        self.assertEqual(out["units_removed"], [{"id": "K1", "type": "kiln"}])
+        flat = " ".join(out["summary"].split())
+        self.assertNotIn("filled in", flat.lower())
+        self.assertIn("The equipment that still needed a fact was removed.", flat)
+        self.assertIn("Kiln K1 was removed", flat)
+        self.assertTrue(all(len(line) <= 80 for line in out["summary"].splitlines()))
+        self.assertEqual(self.tools.store.http.requests, 0)
+
+    def test_added_equipment_keeps_its_answer_and_citation(self):
+        before = {"name": "Crushers (fictional)", "naics": "327310", "units": [
+            {"id": "CR1", "type": "crusher", "construction_date": "1995-04-01", "follows_subpart_f": False}]}
+        after = copy.deepcopy(before)
+        after["units"] = list(before["units"]) + [
+            {"id": "CR2", "type": "crusher", "construction_date": "1996-01-01", "follows_subpart_f": False}]
+        out = self._aligned(self.tools.plant_compare({
+            "before_profile": before, "after_profile": after, "rules": ["60-OOO"],
+        }))
+        flat = " ".join(out["summary"].split())
+        self.assertIn("Crusher CR2 was added: applies.", flat)
+        self.assertIn("60.670", flat)
+        self.assertIn("after August 31, 1983", flat)
+        self.assertIn("CR2 added applies", flat)
+        self.assertIn("Bundled pack, not a live fetch.", flat)
+        self.assertNotIn("compliant", flat.lower())
+        self.assertTrue(all(len(line) <= 80 for line in out["summary"].splitlines()))
+        self.assertEqual(out["unit_set_changes"][0]["after"]["verdict"], "applies")
+        self.assertEqual(self.tools.store.http.requests, 0)
+
+    def test_slash_screens_fit_and_compare_help_stays(self):
+        help_text = tools.slash_usair("", self.tools)
+        self.assertIn("plant|lime|home|shop|compare", help_text)
+        self.assertIn("demo compare", help_text.lower())
+        self.assertTrue(all(len(line) <= 80 for line in help_text.splitlines()))
+        for command in ("demo plant", "demo lime", "demo home", "demo shop", "demo compare", "fixtures"):
+            text = tools.slash_usair(command, self.tools)
+            self.assertNotIn("Unknown demo", text)
+            self.assertNotIn("Unknown /usair", text)
+            self.assertTrue(text.strip())
+            self.assertTrue(all(len(line) <= 80 for line in text.splitlines()), command)
+        self.assertIn("Mesa Gris", tools.slash_usair("demo plant", self.tools))
+        self.assertIn("Copper Hollow", tools.slash_usair("demo lime", self.tools))
+        self.assertIn("Homeowner", tools.slash_usair("demo home", self.tools))
+        self.assertIn("Body shop", tools.slash_usair("demo shop", self.tools))
         self.assertEqual(self.tools.store.http.requests, 0)
 
     def test_profile_wins_and_says_so(self):

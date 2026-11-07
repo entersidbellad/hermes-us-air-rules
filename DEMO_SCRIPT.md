@@ -29,26 +29,32 @@ The same run as a tool call, if you would rather show the agent:
 What you should see:
 
 ```
-What changed
-  before: cement_plant_demo (Mesa Gris Cement Works (fictional))
-  after:  cement_ciswi_after (Mesa Gris Cement Works (fictional))
-Compared offline. Citations are the bundled pack, not a live eCFR or Federal Register read.
-Input changes (1):
-  burns_solid_waste: unknown → false
-Verdict changes (1):
-  60-CCCC  check_with_ehs → skip
-    40 CFR part 60 subparts CCCC and DDDD  (bundled pack, not fetched)
-    K1: check_with_ehs → skip; missing unit.burns_solid_waste → none; The kiln does not combust solid waste (non-hazardous secondary materials that are not solid waste do not trigger CISWI).
-Unchanged rules: 19
-Missing before: 60-CCCC K1 unit.burns_solid_waste
-Missing after: none
+Mesa Gris Cement Works (fictional), TX — what changed
+us-air-rules 0.2.1
+Offline bundled pack. Not a live eCFR or Federal Register read.
+Profiles: cement_plant_demo → cement_ciswi_after
+
+What changed in the plant:
+  Whether the plant burns solid waste (burns_solid_waste) was unknown, now
+    false.
+Kiln K1, CISWI (60-CCCC): was check with EHS, now skip for this screened rule.
+Why: The kiln does not combust solid waste (non-hazardous secondary materials
+  that are not solid waste do not trigger CISWI).
+Citation: 40 CFR part 60 subparts CCCC and DDDD, section 60.2015. Bundled
+  pack, not a live fetch.
+Evidence: 60-CCCC K1 check_with_ehs → skip
+Skip here covers only the screened rule named above.
+Unchanged screened rules: 19.
+The missing fact is now filled in.
+Missing before: 60-CCCC K1 unit.burns_solid_waste.
+Missing after: none.
 ```
 
 Then the screening disclaimer.
 
 Say this, and stop:
 
-> The profile did not say whether the kiln burns solid waste, so CISWI stayed check with EHS. The same plant, with that fact set to false, is skip, and the reason is the pack's own sentence. Nineteen other rules did not move. That citation was not a live eCFR read.
+> The profile did not say whether kiln K1 burns solid waste, so CISWI stayed check with EHS. The same plant, with that fact set to false, is skip for this screened rule. The reason is the pack's own sentence. Nineteen other screened rules did not move. That citation was the bundled pack, not a live eCFR read. Skip is not a finding that the plant is unregulated.
 
 `burns_solid_waste: true` stays check with EHS. The pack flags a waste-burning kiln; it does not decide the 40 CFR part 241 solid-waste question. Do not say the row became "applies."
 
