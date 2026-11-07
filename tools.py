@@ -720,7 +720,8 @@ def slash_usair(raw: str, tools: Optional[Tools] = None) -> str:
         return ("Usage: /usair demo [plant|lime|home|shop|compare] | "
                 "/usair compare <before_fixture> <after_fixture> | "
                 "/usair template [plant|home] | /usair fixtures\n"
-                "demo and compare run fictional plant profiles offline. template prints a blank profile. "
+                "demo compare is the fictional kiln before and after, offline. "
+                "plant, lime, home, and shop stay as they were. template prints a blank profile. "
                 "Live text is usair_cfr_get / usair_cfr_search / usair_fr_recent / usair_sip_lookup.")
     if cmd == "compare":
         if len(parts) != 3:
